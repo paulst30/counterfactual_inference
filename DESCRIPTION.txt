@@ -1,0 +1,4 @@
+Package: CInf
+Type: Package
+Title: Counterfactual Inference Package
+Version: 0.0.1.0
