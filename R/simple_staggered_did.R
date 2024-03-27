@@ -23,6 +23,7 @@
 #' "not_yet_treated". In case of the former, only never-treated units 
 #' are used as controls. In case of the latter, the pretreatment periods 
 #' of not-yet-treated units are added to the pool of controls.
+#' @param unit_cluster logical. If TRUE, bootstrapping allows for correlation between errors within units. If FALSE, no correlation is assumed.
 #' 
 #' @returns A list containing four data frames and an lm object. 
 #' The data frames contain the unit x time treatment effects, the unit-level 
@@ -32,7 +33,9 @@
 #' @example examples.R
 #' @export
 simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA, 
-                                 varformula = NA, universal_base = FALSE,control_group = "never_treated", data){
+                                 varformula = NA, universal_base = FALSE, 
+                                 control_group = "never_treated", 
+                                 unit_cluster = TRUE, data){
   
   #-----------------------------------------------------------------------------
   # Data Preparation #
@@ -149,7 +152,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
       
       # estimate outcome model
       #check if there is enough data to estimate the outcome model
-      obs <- sum(complete.cases(data[posttreatment_period & C,]))
+      obs <- sum(complete.cases(data[posttreatment_period & C & n_missing, necessary_var]))
       
       if (obs){                                                                 # if there are no control units for the current period skip to the next iteration
         outcome_model <- lm(form, 
@@ -163,7 +166,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
       
       # save residuals and sample size of outcome model for later use
       outcome_residuals[outcome_residuals[,tname]==t, "residuals"] <- residuals(outcome_model)
-      outcome_residuals$inv_obs[outcome_residuals[,tname]==t] <- 1/obs
+      #outcome_residuals$inv_obs[outcome_residuals[,tname]==t] <- 1/obs
       
       
       # save treatment effect 
@@ -173,7 +176,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
       treatment_effects[treatment_effects[,idname]==g & treatment_effects[,tname]==t, "att"] <- d_treated-d_untreated
       
       # save number of treated observations
-      treatment_effects$inv_obs[treatment_effects[,idname]==g & treatment_effects[,tname]==t] <- 1/nrow(data[posttreatment_period & G,])
+      #treatment_effects$inv_obs[treatment_effects[,idname]==g & treatment_effects[,tname]==t] <- 1/nrow(data[posttreatment_period & G,])
       
     }
   
@@ -195,20 +198,54 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
     # Bootstrap normalized residuals
     #---------------------------------------------------------------------------
       
+      if (!unit_cluster) {
     # pull bootstraped normalized residuals for each period separately
     # This ensures that each period is represented equally in the bootstraped residuals
       for (t in tlist){
         treatment_indices <- treatment_effects[, tname] == t & treatment_effects[,idname] == g
-        
+
         if (sum(treatment_indices)==1) {                                                               # there should be just one period (if any)
         bootstrap_residuals_gt <- sample(outcome_residuals$norm_residuals, size = 200, replace = T)    # sample 200 normalized residuals with replacement
         bootstrap_residuals_gt <- bootstrap_residuals_gt*treatment_effects[treatment_indices,"var"]    # resize the residuals by the variance of the treated unit
-        
+
         #save the residuals for confidence interval calculation
         append <- data.frame(id = g, group = group, t=t, B=(1:200), boot_res = bootstrap_residuals_gt, tt = treatment_effects[treatment_indices, "att"])
         bootstraped_residuals <- rbind(bootstraped_residuals, append)
-        
+
         }
+      }
+      }
+      
+      if (unit_cluster) {
+        
+      # identify unique controls that have non-missing residuals
+      unique_controls <- unique(outcome_residuals[!is.na(outcome_residuals[,"norm_residuals"]), "id"])
+      
+      # draw a sample of 200 control units to derive the bootstrapped residuals
+      bootstrap_controls <- replicate(200,sample(unique_controls,size =  1 ,replace = TRUE), simplify = FALSE)
+      
+      # relevant treatment effects to be matched to the bootstrapped residuals
+      var_treated <- treatment_effects[treatment_effects[,idname]==g, c(tname, "var", "att")]
+      
+      # create empty list to save results
+      bootstraped_residuals <- list()
+      
+      # get the residuals of each bootstrapped control unit
+     for (i in seq_along(bootstrap_controls)){
+        control_id <- bootstrap_controls[[i]]
+        b_res <- outcome_residuals[outcome_residuals[,idname]==control_id, c(tname, "norm_residuals")]
+        b_res$g <- group
+        b_res$id <- g
+        b_res$B <- i
+        b_res$treat_var <- var_treated$var[match(b_res[,tname], var_treated[,tname])]
+        b_res$tt <- var_treated$att[match(b_res[,tname], var_treated[,tname])]
+        b_res$boot_res <- b_res$norm_residuals * b_res$treat_var
+        bootstraped_residuals[[i]] <- b_res
+     }
+      
+      # consolidate list into one data frame with resized residuals
+      bootstraped_residuals <- do.call(rbind, bootstraped_residuals)
+      
       }
   }
   }

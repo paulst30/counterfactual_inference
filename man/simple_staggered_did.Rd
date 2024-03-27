@@ -13,19 +13,20 @@ simple_staggered_did(
   varformula = NA,
   universal_base = FALSE,
   control_group = "never_treated",
+  unit_cluster = TRUE,
   data
 )
 }
 \arguments{
-\item{yname}{Name of the outcome variable. Needs to be numeric.}
+\item{yname}{Name of the outcome variable. The outcome variable needs to be numeric.}
 
-\item{tname}{Name of the time variable. Needs to be numeric.}
+\item{tname}{Name of the time variable. The time variable needs to be numeric.}
 
-\item{gname}{Variable indicating treatment timing. Needs to be a 
+\item{gname}{Name of the variable indicating treatment timing. Needs to be a 
 numeric variable indicating the period of first treatment for
  all observations of the treated units and is zero for all untreated units.}
 
-\item{idname}{Variable unique identifying each unit.}
+\item{idname}{Name of the variable that uniquely identifies each unit.}
 
 \item{xformula}{A string vector containing all the variables that 
 should enter the outcome model as control variables.}
@@ -35,14 +36,16 @@ the heteroscedasticity of the outcome model errors.}
 
 \item{universal_base}{Requires a logical input. If set to TRUE, pretreatment 
 periods are evaluated against the first treatment period. If set to FALSE, 
-pretreatment periods are evaluated against the follow period. 
-Defaults to FALSE. Treatment periods are always evaluated against the 
+pretreatment periods are evaluated against the following period. 
+Default is FALSE. Treatment periods are always evaluated against the 
 last pretreatment period.}
 
 \item{control_group}{A string either containing "never_treated" or 
 "not_yet_treated". In case of the former, only never-treated units 
 are used as controls. In case of the latter, the pretreatment periods 
 of not-yet-treated units are added to the pool of controls.}
+
+\item{unit_cluster}{logical. If TRUE, bootstrapping allows for correlation between errors within units. If FALSE, no correlation is assumed.}
 
 \item{data}{A data frame or tibble containing all relevant variables.}
 }
@@ -79,5 +82,6 @@ output <- simple_staggered_did(yname = "y",
                                gname = "group",
                                xformula = "x",
                                varformula = "z",
+                               unit_cluster = F,
                                data = dta)
 }
