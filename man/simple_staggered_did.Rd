@@ -17,7 +17,7 @@ simple_staggered_did(
 )
 }
 \arguments{
-\item{yname}{Name of the outcome variable. Needs too be numeric.}
+\item{yname}{Name of the outcome variable. Needs to be numeric.}
 
 \item{tname}{Name of the time variable. Needs to be numeric.}
 

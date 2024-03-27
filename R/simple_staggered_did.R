@@ -4,7 +4,7 @@
 #' over all units. Also provides confidence intervals based on bootstrapped 
 #' treatment effects.
 #' @param data A data frame or tibble containing all relevant variables.
-#' @param yname Name of the outcome variable. Needs too be numeric.
+#' @param yname Name of the outcome variable. Needs to be numeric.
 #' @param tname Name of the time variable. Needs to be numeric.
 #' @param gname Variable indicating treatment timing. Needs to be a 
 #' numeric variable indicating the period of first treatment for
