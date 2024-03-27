@@ -1,6 +1,3 @@
-library(devtools)
-library(roxygen2)
- 
 #' Staggered DiD with single treated units
 #' 
 #' Estimates unit x time treatment effects, averages them on the unit-level and 
