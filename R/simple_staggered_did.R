@@ -4,20 +4,20 @@
 #' over all units. Also provides confidence intervals based on bootstrapped 
 #' treatment effects.
 #' @param data A data frame or tibble containing all relevant variables.
-#' @param yname Name of the outcome variable. Needs to be numeric.
-#' @param tname Name of the time variable. Needs to be numeric.
-#' @param gname Variable indicating treatment timing. Needs to be a 
+#' @param yname Name of the outcome variable. The outcome variable needs to be numeric.
+#' @param tname Name of the time variable. The time variable needs to be numeric.
+#' @param gname Name of the variable indicating treatment timing. Needs to be a 
 #' numeric variable indicating the period of first treatment for
 #'  all observations of the treated units and is zero for all untreated units.
-#' @param idname Variable unique identifying each unit. 
+#' @param idname Name of the variable that uniquely identifies each unit. 
 #' @param xformula A string vector containing all the variables that 
 #' should enter the outcome model as control variables.
 #' @param varformula A string vector containing all variables that determine 
 #' the heteroscedasticity of the outcome model errors. 
 #' @param universal_base Requires a logical input. If set to TRUE, pretreatment 
 #' periods are evaluated against the first treatment period. If set to FALSE, 
-#' pretreatment periods are evaluated against the follow period. 
-#' Defaults to FALSE. Treatment periods are always evaluated against the 
+#' pretreatment periods are evaluated against the following period. 
+#' Default is FALSE. Treatment periods are always evaluated against the 
 #' last pretreatment period.
 #' @param control_group A string either containing "never_treated" or 
 #' "not_yet_treated". In case of the former, only never-treated units 
