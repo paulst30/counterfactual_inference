@@ -1,10 +1,39 @@
 library(devtools)
 library(roxygen2)
-
-#------------------------------------------------------------------
-
-#### Generate function #####
-
+ 
+#' Staggered DiD with single treated units
+#' 
+#' Estimates unit x time treatment effects, averages them on the unit-level and 
+#' over all units. Also provides confidence intervals based on bootstrapped 
+#' treatment effects.
+#' @param data A data frame or tibble containing all relevant variables.
+#' @param yname Name of the outcome variable. Needs too be numeric.
+#' @param tname Name of the time variable. Needs to be numeric.
+#' @param gname Variable indicating treatment timing. Needs to be a 
+#' numeric variable indicating the period of first treatment for
+#'  all observations of the treated units and is zero for all untreated units.
+#' @param idname Variable unique identifying each unit. 
+#' @param xformula A string vector containing all the variables that 
+#' should enter the outcome model as control variables.
+#' @param varformula A string vector containing all variables that determine 
+#' the heteroscedasticity of the outcome model errors. 
+#' @param universal_base Requires a logical input. If set to TRUE, pretreatment 
+#' periods are evaluated against the first treatment period. If set to FALSE, 
+#' pretreatment periods are evaluated against the follow period. 
+#' Defaults to FALSE. Treatment periods are always evaluated against the 
+#' last pretreatment period.
+#' @param control_group A string either containing "never_treated" or 
+#' "not_yet_treated". In case of the former, only never-treated units 
+#' are used as controls. In case of the latter, the pretreatment periods 
+#' of not-yet-treated units are added to the pool of controls.
+#' 
+#' @returns A list containing four data frames and an lm object. 
+#' The data frames contain the unit x time treatment effects, the unit-level 
+#' average treatment effects, the overall average treatment effect, and the 
+#' bootstrapped residuals used to calculate confidence intervals. 
+#' The lm object contains the details on the variance model.
+#' @example examples.R
+#' @export
 simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA, 
                                  varformula = NA, universal_base = FALSE,control_group = "never_treated", data){
   
