@@ -1,8 +1,23 @@
 #' Staggered DiD with single treated units
 #' 
+#' @description
 #' Estimates unit x time treatment effects, averages them on the unit-level and 
 #' over all units. Also provides confidence intervals based on bootstrapped 
 #' treatment effects.
+#' 
+#' @details
+#' This functions implements a simple difference in difference estimator for 
+#' staggered treatment adoption with few treated units and many controls. 
+#' Following the the recent literature on staggered treatment adoption, this function 
+#' estimates the unit x time treatment effects and aggregates them to derive the
+#' average treatment effects (Callaway & Sant'Anna, 2021). For inference, this function 
+#' implements the bootstrap method proposed by Alvarez & Ferman (2023), which 
+#' produces confidence intervals of the correct size in situations with a 
+#' fixed number of treated units and a large number of control units. 
+#' 
+#' @references Callaway, Brantly and Pedro H.C. Sant'Anna. 2021. "Difference-in-Differences with Multiple Time Periods." Journal of Econometrics, Vol. 225, No. 2, pp. 200-230. <https://arxiv.org/abs/1803.09015>
+#' @references Alvarez, Luis and Bruno Ferman. 2023. "Extensions for Inference in Difference-in-Difference with Few Treated Clusters". <https://arxiv.org/pdf/2302.03131.pdf>
+#' 
 #' @param data A data frame or tibble containing all relevant variables.
 #' @param yname Name of the outcome variable. The outcome variable needs to be numeric.
 #' @param tname Name of the time variable. The time variable needs to be numeric.

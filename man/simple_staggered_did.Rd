@@ -58,6 +58,16 @@ Estimates unit x time treatment effects, averages them on the unit-level and
 over all units. Also provides confidence intervals based on bootstrapped 
 treatment effects.
 }
+\details{
+This functions implements a simple difference in difference estimator for 
+staggered treatment adoption with few treated units and many controls. 
+Following the the recent literature on staggered treatment adoption, this function 
+estimates the unit x time treatment effects and aggregates them to derive the
+average treatment effects (Callaway & Sant'Anna, 2021). For inference, this function 
+implements the bootstrap method proposed by Alvarez & Ferman (2023), which 
+produces confidence intervals of the correct size in situations with a 
+fixed number of treated units and a large number of control units.
+}
 \examples{
 # generate example data with heteroscedasticity and one control variable
 dta <- data.frame(id = rep(1:50, each=10),
@@ -80,4 +90,9 @@ output <- simple_staggered_did(yname = "y",
                                xformula = "x",
                                varformula = "z",
                                data = dta)
+}
+\references{
+Callaway, Brantly and Pedro H.C. Sant'Anna. 2021. "Difference-in-Differences with Multiple Time Periods." Journal of Econometrics, Vol. 225, No. 2, pp. 200-230. <https://arxiv.org/abs/1803.09015>
+
+Alvarez, Luis and Bruno Ferman. 2023. "Extensions for Inference in Difference-in-Difference with Few Treated Clusters". <https://arxiv.org/pdf/2302.03131.pdf>
 }
