@@ -13,7 +13,6 @@ simple_staggered_did(
   varformula = NA,
   universal_base = FALSE,
   control_group = "never_treated",
-  unit_cluster = TRUE,
   data
 )
 }
@@ -44,8 +43,6 @@ last pretreatment period.}
 "not_yet_treated". In case of the former, only never-treated units 
 are used as controls. In case of the latter, the pretreatment periods 
 of not-yet-treated units are added to the pool of controls.}
-
-\item{unit_cluster}{logical. If TRUE, bootstrapping allows for correlation between errors within units. If FALSE, no correlation is assumed.}
 
 \item{data}{A data frame or tibble containing all relevant variables.}
 }
@@ -82,6 +79,5 @@ output <- simple_staggered_did(yname = "y",
                                gname = "group",
                                xformula = "x",
                                varformula = "z",
-                               unit_cluster = F,
                                data = dta)
 }

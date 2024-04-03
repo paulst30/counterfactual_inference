@@ -18,5 +18,4 @@ output <- simple_staggered_did(yname = "y",
                                gname = "group",
                                xformula = "x",
                                varformula = "z",
-                               unit_cluster = F,
                                data = dta)
