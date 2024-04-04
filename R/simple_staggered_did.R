@@ -269,7 +269,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
     g <- x$g
     return(list(data.frame(id=id, g=g, t=t, att = att, crit_val=crit_val)))
   }
-  bootstraped_grouptime_average <- sapply(split(bootstraped_residuals, as.formula(~id+t)), quantile_function)
+  bootstraped_grouptime_average <- sapply(split(bootstraped_residuals, as.formula(~id)), quantile_function)
   bootstraped_grouptime_average <- do.call(rbind, bootstraped_grouptime_average)
   bootstraped_grouptime_average <- unique(bootstraped_grouptime_average) 
   
