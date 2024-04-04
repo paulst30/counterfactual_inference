@@ -213,7 +213,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
       
         
       # identify unique controls that have non-missing residuals
-      unique_controls <- unique(outcome_residuals[!is.na(outcome_residuals[,"norm_residuals"]), "id"])
+      unique_controls <- unique(outcome_residuals[!is.na(outcome_residuals[,"norm_residuals"]), idname])
       
       # draw a sample of 200 control units to derive the bootstrapped residuals
       bootstrap_controls <- replicate(200,sample(unique_controls,size =  1 ,replace = TRUE), simplify = FALSE)
