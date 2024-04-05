@@ -73,7 +73,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   }
   
   if (!is.na(varformula)) {
-    var_form <- as.formula(paste("residuals^2 ~ 1 + ", paste(varformula, collapse =  "+"))) 
+    var_form <- as.formula(paste("residuals^2 ~ 1 + ", paste(paste0("1/",varformula), collapse =  "+"))) 
   } else {
     var_form <- as.formula(paste("residuals^2 ~ 1"))
   }
@@ -222,7 +222,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
       var_treated <- treatment_effects[treatment_effects[,idname]==g, c(tname, "var", "att")]
       
       # create empty list to save results
-      bootstraped_residuals <- list()
+      bootstraped_res <- list()
       
       # get the residuals of each bootstrapped control unit
      for (i in seq_along(bootstrap_controls)){
@@ -234,11 +234,12 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
         b_res$treat_var <- var_treated$var[match(b_res[,tname], var_treated[,tname])]
         b_res$tt <- var_treated$att[match(b_res[,tname], var_treated[,tname])]
         b_res$boot_res <- b_res$norm_residuals * b_res$treat_var
-        bootstraped_residuals[[i]] <- b_res
+        bootstraped_res[[i]] <- b_res
      }
       
       # consolidate list into one data frame with resized residuals
-      bootstraped_residuals <- do.call(rbind, bootstraped_residuals)
+      bootstraped_res <- do.call(rbind, bootstraped_res)
+      bootstraped_residuals <- rbind(bootstraped_residuals, bootstraped_res)
       
 
   }
@@ -272,6 +273,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   }
   bootstraped_grouptime_average <- sapply(split(bootstraped_residuals, as.formula(~id)), quantile_function)
   bootstraped_grouptime_average <- do.call(rbind, bootstraped_grouptime_average)
+  
   bootstraped_grouptime_average <- bootstraped_grouptime_average[complete.cases(bootstraped_grouptime_average),]
   bootstraped_grouptime_average <- bootstraped_grouptime_average[!duplicated(bootstraped_grouptime_average),]
   
@@ -311,43 +313,39 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
     
     return(list(data.frame(id=id, g=g, att=mean_att, crit_val=crit_val)))
   }
-  treatment_effects <- sapply(split(treatment_effects, as.formula(~id)), mean_function)
-  treatment_effects <- do.call(rbind, treatment_effects)
+  bootstraped_groupwise_average <- sapply(split(treatment_effects, as.formula(~id)), mean_function)
+  bootstraped_groupwise_average <- do.call(rbind, bootstraped_groupwise_average)
 
   
   
   # Calculate simple average effects--------------------------------------------
   
   # Take the mean of all hypothetical unit x time treatment effects for each bootstrap iteration B. 
-  # Each of these means represents a hypothetical ATT. The deviance from the actual ATT is 
-  # used to calculate the 95% confidence intervals.
+  # Each of these means represents a hypothetical average ATT. 
+  # These 200 hypothetical ATTs are used to calculate the 95% confidence interval.
   
   mean_function <- function(x) {
-    mean_val <- mean(x$boot_tt, na.rm=T)                                       # bootstraped ATT
-    tt <- mean(x$tt, na.rm=T)                                                  # actual ATT
-    res <- tt - mean_val                                                       # deviance from the actual ATT
+    mean_val <- mean(x$boot_res, na.rm=T)                                       # bootstraped ATT (already scaled)
     B <- unique(x$B)
-    return(list(data.frame(res=res, mean_tt=tt, B=B)))
+    return(list(data.frame(mean_tt=mean_val, B=B)))
   }
   bootstraped_simple_average <- sapply(split(bootstraped_residuals[treated,], as.formula(~B)), mean_function)
   bootstraped_simple_average <- do.call(rbind, bootstraped_simple_average)
+
+  # get the critical value 
+  overall_crit_val <- quantile(abs(bootstraped_simple_average$mean_tt), prob=0.95, na.rm=T)
   
-  # used the 200 bootstraped ATTs to calculate 95% confidence intervals
-  quantile_function <- function(x) {
-    crit_val <- quantile(abs(x$res), prob=0.95, na.rm=T)
-    att<- unique(x$mean_tt)
-    return(data.frame(att=att, crit_val=crit_val))
-  }
-  bootstraped_simple_average <- quantile_function(bootstraped_simple_average)
-  
-  
+  # calculate average treatment effect
+  bootstraped_simple_average <- data.frame(att = mean(treatment_effects$att, na.rm=T),
+                                           crit_val = overall_crit_val)
+
   
   #-----------------------------------------------------------------------------
   # Output
   #-----------------------------------------------------------------------------
   
   output[["grouptime_treatment_effects"]] <- bootstraped_grouptime_average
-  output[["groupwise_treatment_effects"]] <- treatment_effects
+  output[["groupwise_treatment_effects"]] <- bootstraped_groupwise_average
   output[["average_treatment_effect"]] <- bootstraped_simple_average
   output[["bootstraped_residuals"]] <- bootstraped_residuals
   output[["variance_model"]] <- var_model
