@@ -66,20 +66,20 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   ulist <- as.vector(unique(data[,idname]))
   
   #set formulas for outcome and variance model
-  if (!is.na(xformula)) {
+  if (max(!is.na(xformula))) {
     form <- as.formula(paste("delta ~ 1 + ", paste(xformula, collapse =  "+"))) 
   } else {
     form <- as.formula(paste("delta ~ 1"))
   }
   
-  if (!is.na(varformula)) {
-    var_form <- as.formula(paste("residuals^2 ~ 1 + ", paste(paste0("1/",varformula), collapse =  "+"))) 
+  if (max(!is.na(varformula))) {
+    var_form <- as.formula(paste("residuals^2 ~ 1 + ", paste(paste0("I(",varformula, "^-1)"), collapse =  "+"))) 
   } else {
     var_form <- as.formula(paste("residuals^2 ~ 1"))
   }
   
   # reduce dataset to necessary variables 
-   necessary_var <- if(!is.na(varformula)) c(idname, gname, tname, varformula) else c(idname, gname, tname)
+   necessary_var <- if(max(!is.na(varformula))) c(idname, gname, tname, varformula) else c(idname, gname, tname)
   
    
   # Set up output objects
@@ -149,7 +149,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
     }
     
     #are there any missings in the dataset?
-    necessary_var <- if(!is.na(xformula)) c(idname, gname, tname,"delta", xformula) else c(idname, gname, tname, "delta")
+    necessary_var <- if(max(!is.na(xformula))) c(idname, gname, tname,"delta", xformula) else c(idname, gname, tname, "delta")
     n_missing <- complete.cases(data[,necessary_var])                  # indicates all observations for which a delta and all variables of the outcome model are non-missing
     
     # outcome residuals for specific group
@@ -196,7 +196,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
     #---------------------------------------------------------------------------
     # Estimate variance and control for heteroscedasticity
     #---------------------------------------------------------------------------
-    
+
     # use all the squared residuals from the outcome model an regress them on a constant and custom variables
       var_model <- lm(var_form,
                       data=outcome_residuals)
@@ -256,9 +256,9 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
       uniform_crit_val <- quantile(maxima, prob=0.95, na.rm=T)                 # calculate the 95% confidence value of maxima.
       crit_val <- tapply(abs(x$boot_res), x[,tname], FUN=function(x) quantile(x,prob=0.95, na.rm=T))
 
-    } else if (sum(!is.na(x$boot_res))==0 & nrow(x)>0) {                       # If there is only missing data for a specific unit x time combination                                                            # set the critical value to NA also
-      crit_val <- rep(NA, nrow(unique(x[,tname]))) 
-      uniform_crit_val <- rep(NA, nrow(unique(x[,tname])))
+    } else if (sum(!is.na(x$boot_res))==0 & nrow(x)>0) {                       # If there is only missing data for a specific unit x time combination
+      crit_val <- rep(NA, length(unique(x[,tname])))                           # set the critical value to NA also
+      uniform_crit_val <- rep(NA, length(unique(x[,tname])))
     } else if (nrow(x)==0) {                                                   # If there is no data at all, return an empty vector
       crit_val <- numeric()
       uniform_crit_val <- numeric()
@@ -290,7 +290,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   quantile_function <- function(x) {
     id <- unique(x$id)
     g <- unique(x$g)
-    treat_var <- unique(x$treat_var[!is.na(x$treat_var)])
+    treat_var <- ifelse(max(!is.na(x$treat_var))>0, unique(x$treat_var[!is.na(x$treat_var)]), NA)
     boot_mean <- tapply(x$norm_residuals, x$B, FUN = mean, na.rm=T)      # mean of each bootstrap draw
     crit_val <- quantile(boot_mean, prob=0.95, na.rm=T)*treat_var        # regular pointwise CI
     norm_maxima <- max(boot_mean)                                        # maximum of bootstraped means for uniform CI
