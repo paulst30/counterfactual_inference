@@ -2,7 +2,7 @@
 
 Installation: 
 
-library(dev_tools)
+library(devtools)
 
 install_github("paulst30/counterfactual_inference")
 
