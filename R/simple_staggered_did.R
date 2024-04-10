@@ -61,15 +61,16 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   
   #unpack inputs
   G <- (data[,gname]!=0)
+  data$treated_unit <- as.numeric(G)
   tlist <- as.vector(unique(data[,tname]))
   glist <- as.vector(unique(data[G,gname]))
   ulist <- as.vector(unique(data[,idname]))
   
   #set formulas for outcome and variance model
   if (max(!is.na(xformula))) {
-    form <- as.formula(paste("delta ~ 1 + ", paste(xformula, collapse =  "+"))) 
+    form <- as.formula(paste("delta ~ 1 + treated_unit +", paste(xformula, collapse =  "+"))) 
   } else {
-    form <- as.formula(paste("delta ~ 1"))
+    form <- as.formula(paste("delta ~ 1 + treated_unit"))
   }
   
   if (max(!is.na(varformula))) {
@@ -94,7 +95,8 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   
   
   treatment_effects <- data.frame(data[G,necessary_var],     # data frame to track treatment effects for treated units
-                                  att = NA)
+                                  att = NA,
+                                  analy_crit_val =NA)
   
   #-----------------------------------------------------------------------------
   # Estimate Outcome Model, Treatment Effects, and track Residuals
@@ -153,8 +155,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
     n_missing <- complete.cases(data[,necessary_var])                  # indicates all observations for which a delta and all variables of the outcome model are non-missing
     
     # outcome residuals for specific group
-    outcome_residuals <- data.frame(data[C & n_missing,],              # data frame that will be populated with the residuals of the outcome model
-                                    residuals = NA)
+    outcome_residuals <- list()
     
     
     #loop over time periods to estimate a outcome model for each period
@@ -167,10 +168,11 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
       #check if there is enough data to estimate the outcome model
       obs <- sum(complete.cases(data[posttreatment_period & C & n_missing, necessary_var]))
       
-      if (obs){                                                                 # if there are no control units for the current period skip to the next iteration
+      # if there are no control units for the current period skip to the next iteration
+      if (obs){                                                                 
         outcome_model <- lm(form, 
                           data = data,
-                          subset = (posttreatment_period & C))
+                          subset = (posttreatment_period & ( C | G )))
       } else {
         warning(paste("Not enough observations in the control group to estimate outcome model in period ", t))
         next
@@ -178,20 +180,23 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
         
       
       # save residuals and sample size of outcome model for later use
-      outcome_residuals[outcome_residuals[,tname]==t, "residuals"] <- residuals(outcome_model)
+      index <- as.numeric(names(residuals(outcome_model)))
+      residuals <- data.frame(data[index,], 
+                               residuals = residuals(outcome_model))
       #outcome_residuals$inv_obs[outcome_residuals[,tname]==t] <- 1/obs
+      outcome_residuals[[t]] <- residuals[residuals[,idname]!=g,]
       
       
-      # save treatment effect 
-      d_untreated <- mean(predict(object = outcome_model, newdata=data[posttreatment_period & G,]))
-      d_treated <- mean(data[posttreatment_period & G, "delta"])
-      
-      treatment_effects[treatment_effects[,idname]==g & treatment_effects[,tname]==t, "att"] <- d_treated-d_untreated
+      # save treatment effect and analytical standard errors
+      treatment_effects[treatment_effects[,idname]==g & treatment_effects[,tname]==t, "att"] <- outcome_model$coefficients[2]
+      treatment_effects[treatment_effects[,idname]==g & treatment_effects[,tname]==t, "analy_crit_val"] <- sqrt(diag(vcov(outcome_model)))[2]*1.96
       
       # save number of treated observations
       #treatment_effects$inv_obs[treatment_effects[,idname]==g & treatment_effects[,tname]==t] <- 1/nrow(data[posttreatment_period & G,])
       
     }
+    
+    outcome_residuals <- do.call(rbind, outcome_residuals)
   
     #---------------------------------------------------------------------------
     # Estimate variance and control for heteroscedasticity
@@ -201,11 +206,11 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
       var_model <- lm(var_form,
                       data=outcome_residuals)
     
-    # normalize the residuals by dividing them by their (expected) variance
-      outcome_residuals$norm_residuals <-outcome_residuals$residuals / predict(object=var_model, data=outcome_residuals)
+    # normalize the residuals by dividing them by their (expected) standard error
+      outcome_residuals$norm_residuals <-outcome_residuals$residuals / sqrt(predict(object=var_model, data=outcome_residuals))
 
-    # estimate the variance of the treated
-      treatment_effects$var <- predict(object = var_model, newdata = treatment_effects)
+    # estimate the standard errors of the treated
+      treatment_effects$var <- sqrt(predict(object = var_model, newdata = treatment_effects))
       
     #---------------------------------------------------------------------------
     # Bootstrap normalized residuals
@@ -273,7 +278,9 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   bootstraped_grouptime_average <- sapply(split(bootstraped_residuals, as.formula(~id)), quantile_function)
   bootstraped_grouptime_average <- do.call(rbind, bootstraped_grouptime_average)
   bootstraped_grouptime_average$att <- treatment_effects$att[match(paste0(bootstraped_grouptime_average$id,bootstraped_grouptime_average$t),
-                                                                   paste0(treatment_effects[,idname], treatment_effects[,tname]))] 
+                                                                   paste0(treatment_effects[,idname], treatment_effects[,tname]))]
+  bootstraped_grouptime_average$analy_crit_val <- treatment_effects$analy_crit_val[match(paste0(bootstraped_grouptime_average$id,bootstraped_grouptime_average$t),
+                                                                        paste0(treatment_effects[,idname], treatment_effects[,tname]))]
   
   
   # Calculate group-wise average effects----------------------------------------
@@ -307,14 +314,15 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   
   mean_function <- function(x) {
     mean_att <- mean(x$att, na.rm=T)
+    analy_crit_val<- sd(x$att, na.rm = T)*1.96
     id <- unique(x[,idname])
     g <- unique(x[,gname])
-    return(list(data.frame(id=id, g=g, att=mean_att)))
+    return(list(data.frame(id=id, g=g, att=mean_att, analy_crit_val=analy_crit_val)))
   }
   groupwise_atts <- sapply(split(treatment_effects, as.formula(~id)), mean_function)
   groupwise_atts <- do.call(rbind, groupwise_atts)
   bootstraped_groupwise_average$att <- groupwise_atts$att[match(bootstraped_groupwise_average$id, groupwise_atts$id)]
-
+  bootstraped_groupwise_average$analy_crit_val <- groupwise_atts$analy_crit_val[match(bootstraped_groupwise_average$id, groupwise_atts$id)]
   
   
   # Calculate simple average effects--------------------------------------------
@@ -336,6 +344,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   
   # calculate average treatment effect
   bootstraped_simple_average <- data.frame(att = mean(treatment_effects$att, na.rm=T),
+                                           analy_crit_val = sd(treatment_effects$att, na.rm=T)*1.96,
                                            crit_val = overall_crit_val)
 
   
