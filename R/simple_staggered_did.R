@@ -189,7 +189,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
       
       # save treatment effect and analytical standard errors
       treatment_effects[treatment_effects[,idname]==g & treatment_effects[,tname]==t, "att"] <- outcome_model$coefficients[2]
-      treatment_effects[treatment_effects[,idname]==g & treatment_effects[,tname]==t, "analy_crit_val"] <- sqrt(diag(vcov(outcome_model)))[2]*1.96
+      treatment_effects[treatment_effects[,idname]==g & treatment_effects[,tname]==t, "analy_crit_val"] <- sqrt(diag(vcov(outcome_model))/obs)[2]*1.96
       
       # save number of treated observations
       #treatment_effects$inv_obs[treatment_effects[,idname]==g & treatment_effects[,tname]==t] <- 1/nrow(data[posttreatment_period & G,])
@@ -313,8 +313,10 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   treatment_effects$id <- treatment_effects[,idname]
   
   mean_function <- function(x) {
-    mean_att <- mean(x$att, na.rm=T)
-    analy_crit_val<- sd(x$att, na.rm = T)*1.96
+    index <- x[,tname]>=x[,gname]
+    n <- nrow(x[index & !is.na(x$att),])
+    mean_att <- mean(x$att[index], na.rm=T)
+    analy_crit_val<- sd(x$att[index], na.rm = T)/sqrt(n)*1.96
     id <- unique(x[,idname])
     g <- unique(x[,gname])
     return(list(data.frame(id=id, g=g, att=mean_att, analy_crit_val=analy_crit_val)))
@@ -341,10 +343,14 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
 
   # get the critical value 
   overall_crit_val <- quantile(abs(bootstraped_simple_average$mean_tt), prob=0.95, na.rm=T)
+
+  # get sample size
+  index <- treatment_effects[,tname]>=treatment_effects[,gname]
+  n <- nrow(treatment_effects[index & !is.na(treatment_effects$att),])
   
   # calculate average treatment effect
-  bootstraped_simple_average <- data.frame(att = mean(treatment_effects$att, na.rm=T),
-                                           analy_crit_val = sd(treatment_effects$att, na.rm=T)*1.96,
+  bootstraped_simple_average <- data.frame(att = mean(treatment_effects$att[index], na.rm=T),
+                                           analy_crit_val = sd(treatment_effects$att[index], na.rm=T)/sqrt(n)*1.96,
                                            crit_val = overall_crit_val)
 
   
