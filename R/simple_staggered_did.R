@@ -56,6 +56,12 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   
   #make sure data is a sorted data frame
   data <- as.data.frame(data)
+  
+  #expand data 
+  expanded_dta <- expand.grid(unit = unique(data[,idname]),period = unique(data[,tname]))
+  data <- merge(data,expanded_dta,by.x=c(idname,tname),by.y=c("unit","period"),all.y=T)
+  data[,gname] <- ave(data[,gname], data[,idname], FUN = function(x) max(x, na.rm=T))
+  
   #sort dataset
   data <- data[order(data[,idname], data[,tname], decreasing=FALSE),]
   
@@ -164,25 +170,42 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
       # set current period
       posttreatment_period <- data[,tname]==t
       
-      # estimate outcome model
-      #check if there is enough data to estimate the outcome model
-      obs <- sum(complete.cases(data[posttreatment_period & C & n_missing, necessary_var]))
+      # Put together necessary data
+      y <- as.data.frame(data[posttreatment_period & (C | G), c("delta", idname, tname)])
+      row.names(y) <- NULL
       
-      # if there are no control units for the current period skip to the next iteration
-      if (obs){                                                                 
-        outcome_model <- lm(form, 
-                          data = data,
-                          subset = (posttreatment_period & ( C | G )))
+      if (max(!is.na(xformula))) {
+       X <- as.data.frame(data[(C | G) & data[,tname] == pret, c(idname, "treated_unit", xformula)] )
+       row.names(X) <- NULL
       } else {
-        warning(paste("Not enough observations in the control group to estimate outcome model in period ", t))
-        next
+       X <- as.data.frame(data[(C | G) & data[,tname] == pret, c(idname, "treated_unit")])
+       row.names(X) <- NULL
       }
+     
+      X <- merge(y,X, by.x=c(idname), by.y=c(idname), all.x= TRUE)
+      
+      #check if there are enough observations, skip iteration if not
+      if (!max(complete.cases(X[X[,"treated_unit"]==1,]))) {
+        warning(paste("Incomplete observation for treated unit", g,"in period", t))
+        next
+      } 
+      
+      if (!max(complete.cases(X[X[,"treated_unit"]!=1,]))) {
+        warning(paste("No control units for treated unit", g,"in period", t))
+        next
+      } 
+      
+      # Estimate outcome model
+        outcome_model <- lm(form, 
+                          data = X)
+
         
       
       # save residuals and sample size of outcome model for later use
       index <- as.numeric(names(residuals(outcome_model)))
-      residuals <- data.frame(data[index,], 
+      residuals <- data.frame(data[posttreatment_period & (C | G),][index,], 
                                residuals = residuals(outcome_model))
+      obs <- nrow(residuals)
       #outcome_residuals$inv_obs[outcome_residuals[,tname]==t] <- 1/obs
       outcome_residuals[[t]] <- residuals[residuals[,idname]!=g,]
       
@@ -197,7 +220,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
     }
     
     outcome_residuals <- do.call(rbind, outcome_residuals)
-  
+
     #---------------------------------------------------------------------------
     # Estimate variance and control for heteroscedasticity
     #---------------------------------------------------------------------------
