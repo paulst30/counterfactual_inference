@@ -72,6 +72,12 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   glist <- as.vector(unique(data[G,gname]))
   ulist <- as.vector(unique(data[,idname]))
   
+  #check if observations are uniquely identified
+  duplicates <- duplicated(paste0(data[,idname],"_",data[,tname]))
+  if (sum(duplicates)>0) {
+    stop(paste("Variables", idname, "and", tname, "do not uniquely identify all observations."))
+  }
+  
   #set formulas for outcome and variance model
   if (max(!is.na(xformula))) {
     form <- as.formula(paste("delta ~ 1 + treated_unit +", paste(xformula, collapse =  "+"))) 
@@ -200,7 +206,6 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
                           data = X)
 
         
-      
       # save residuals and sample size of outcome model for later use
       index <- as.numeric(names(residuals(outcome_model)))
       residuals <- data.frame(data[posttreatment_period & (C | G),][index,], 
@@ -224,7 +229,14 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
     #---------------------------------------------------------------------------
     # Estimate variance and control for heteroscedasticity
     #---------------------------------------------------------------------------
-
+    
+    #check if there are any treatment effects (and residuals) to work with
+    if (length(outcome_residuals)==0) {
+      warning(paste("No treatment effects calculated for unit", g))
+      next
+    }
+    
+    
     # use all the squared residuals from the outcome model an regress them on a constant and custom variables
       var_model <- lm(var_form,
                       data=outcome_residuals)
@@ -234,7 +246,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
 
     # estimate the standard errors of the treated
       treatment_effects$var <- sqrt(predict(object = var_model, newdata = treatment_effects))
-      
+
     #---------------------------------------------------------------------------
     # Bootstrap normalized residuals
     #---------------------------------------------------------------------------
@@ -296,7 +308,9 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
     t <- unique(x[,tname])
     g <- unique(x$g)
     
+    
     return(list(data.frame(id=id, g=g, t=t, crit_val=crit_val, uniform_crit_val=uniform_crit_val)))
+    
   }
   bootstraped_grouptime_average <- sapply(split(bootstraped_residuals, as.formula(~id)), quantile_function)
   bootstraped_grouptime_average <- do.call(rbind, bootstraped_grouptime_average)
