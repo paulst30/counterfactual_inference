@@ -75,7 +75,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, xformula = NA,
   #check if observations are uniquely identified
   duplicates <- duplicated(paste0(data[,idname],"_",data[,tname]))
   if (sum(duplicates)>0) {
-    stop(paste("Variables", idname, "and", tname, "do not uniquely identify all observations."))
+    warning(paste("Variables", idname, "and", tname, "do not uniquely identify all observations."))
   }
   
   #set formulas for outcome and variance model
