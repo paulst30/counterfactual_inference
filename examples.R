@@ -14,7 +14,7 @@ dta$y[dta$group <= dta$t] <- dta$y[dta$group <= dta$t] + 4
 # run simple_staggered_did
 output <- simple_staggered_did(yname = "y",
                                tname = "t",
-                               unitname = "id",
+                               idname = "id",
                                gname = "group",
                                xformula = "x",
                                varformula = "z",
