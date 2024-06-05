@@ -24,7 +24,7 @@
 #' @param gname Name of the variable indicating treatment timing. Needs to be a 
 #' numeric variable indicating the period of first treatment for
 #'  all observations of the treated units and is zero for all untreated units.
-#' @param unitname Name of the variable that indicates the desired unit-level of the analysis. Treatment effects are calculated at this unit x time level. Aggregated treatment effects are aggregated at this unit level.  
+#' @param unitname Name of the variable that indicates the desired unit-level of the analysis, which should be the treatment level. Treatment effects are calculated at this unit x time level. Aggregated treatment effects are aggregated at this unit level.  
 #' @param idname Name of the variable that identifies the lowest unit level. The combination of idname and tname must uniquely identify all observations. When not specified, idname is assumed to be the same as unitname.  
 #' @param xformula A string vector containing all the variables that 
 #' should enter the outcome model as control variables.
@@ -59,9 +59,10 @@ simple_staggered_did <- function(yname, tname, gname, unitname, idname = unitnam
   data <- as.data.frame(data)
   
   #expand data 
-  expanded_dta <- expand.grid(unit = unique(data[,unitname]),period = unique(data[,tname]))
-  data <- merge(data,expanded_dta,by.x=c(unitname,tname),by.y=c("unit","period"),all.y=T)
-  data[,gname] <- ave(data[,gname], data[,unitname], FUN = function(x) max(x, na.rm=T))
+  expanded_dta <- expand.grid(unit = unique(data[,idname]),period = unique(data[,tname]))
+  data <- merge(data,expanded_dta,by.x=c(idname,tname),by.y=c("unit","period"),all.y=T)
+  data[,gname] <- ave(data[,gname], data[,idname], FUN = function(x) max(x, na.rm=T))
+  data[,unitname] <- ave(data[,unitname], data[,idname], FUN = function(x) max(x, na.rm=T))
   
   #sort dataset
   data <- data[order(data[,idname], data[,tname], decreasing=FALSE),]
@@ -71,7 +72,7 @@ simple_staggered_did <- function(yname, tname, gname, unitname, idname = unitnam
   data$treated_unit <- as.numeric(G)
   tlist <- as.vector(unique(data[,tname]))
   glist <- as.vector(unique(data[G,gname]))
-  ulist <- as.vector(unique(data[,unitname]))
+  ulist <- as.vector(unique(data[,idname]))
   
   #check if observations are uniquely identified
   duplicates <- duplicated(paste0(data[,idname],"_",data[,tname]))
@@ -140,7 +141,7 @@ simple_staggered_did <- function(yname, tname, gname, unitname, idname = unitnam
     # estimate the difference to last pre-treatment period 
     data$delta <- NA
     for (id in ulist){
-      group_indices <- data[, unitname] == id 
+      group_indices <- data[, idname] == id 
       pretreatment_period <- data[,tname]== pret                                      # base periods for all units
       reference_value <- as.numeric(data[group_indices & pretreatment_period, yname]) # value in the base period for every unit
       if (length(reference_value)==0) {                                               # skip to the next iteration if the base period is missing
@@ -149,7 +150,7 @@ simple_staggered_did <- function(yname, tname, gname, unitname, idname = unitnam
       }
       data[group_indices, "delta"] <- data[group_indices, yname] - reference_value    # calculate changes in the outcome variable (delta)
     }
-    
+   
     # change pretreatment delta to first differences if base period is not "universal"
     if (!universal_base) {
       difference <- function(x){                                                # function returns a vector of first differences where possible and NA otherwise
@@ -294,10 +295,10 @@ simple_staggered_did <- function(yname, tname, gname, unitname, idname = unitnam
   #-----------------------------------------------------------------------------
   # Estimate confidence intervals
   #-----------------------------------------------------------------------------
-  
+ 
   # Calculate group-time average effects----------------------------------------
   quantile_function <- function(x) {                                           # If there are bootstraped residuals for a unit+time observation...
-    
+ 
     if (sum(!is.na(x$boot_res))>0 & nrow(x)>0) {
       maxima <- tapply(abs(x$boot_res), x[,tname], FUN = function(v) {
         if (all(is.na(v))) NA else max(v, na.rm = TRUE)

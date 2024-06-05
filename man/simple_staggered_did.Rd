@@ -26,7 +26,7 @@ simple_staggered_did(
 numeric variable indicating the period of first treatment for
  all observations of the treated units and is zero for all untreated units.}
 
-\item{unitname}{Name of the variable that indicates the desired unit-level of the analysis. Treatment effects are calculated at this unit x time level. Aggregated treatment effects are aggregated at this unit level.}
+\item{unitname}{Name of the variable that indicates the desired unit-level of the analysis, which should be the treatment level. Treatment effects are calculated at this unit x time level. Aggregated treatment effects are aggregated at this unit level.}
 
 \item{idname}{Name of the variable that identifies the lowest unit level. The combination of idname and tname must uniquely identify all observations. When not specified, idname is assumed to be the same as unitname.}
 
