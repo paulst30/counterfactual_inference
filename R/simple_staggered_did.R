@@ -157,7 +157,7 @@ simple_staggered_did <- function(yname, tname, gname, unitname, idname = unitnam
         first_diff <- ifelse(is.na(x[,yname]) | is.na(c(tail(x[,yname], -1), NA)) , NA ,diff(x[,yname], lead=1))
         return(list(first_diff))
       }
-      first_diff <-  sapply(split(data, data[,unitname]), FUN = difference)
+      first_diff <-  sapply(split(data, data[,idname]), FUN = difference)
       first_diff <- unlist(first_diff)
       
       data$first_diff <- first_diff
@@ -408,8 +408,8 @@ simple_staggered_did <- function(yname, tname, gname, unitname, idname = unitnam
   output[["grouptime_treatment_effects"]] <- bootstraped_grouptime_average
   output[["groupwise_treatment_effects"]] <- bootstraped_groupwise_average
   output[["average_treatment_effect"]] <- bootstraped_simple_average
-  output[["bootstraped_residuals"]] <- bootstraped_residuals
-  output[["variance_model"]] <- var_model
+  #output[["bootstraped_residuals"]] <- bootstraped_residuals
+  #output[["variance_model"]] <- var_model
   
   return(output)
 }
