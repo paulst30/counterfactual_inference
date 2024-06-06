@@ -414,7 +414,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
 
  
   # Pre-Treatment Trend test ---------------------------------------------------
-
+ 
   # calculate mean pseudo treatment effect
   mean_function <- function(x) {
     mean_att <- mean(x$att, na.rm=T)
@@ -429,12 +429,13 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   bootstraped_residuals$pseudo_att <- pseudo_pre_treatment_atts$pseudo_att[match(bootstraped_residuals$id,pseudo_pre_treatment_atts$id)]
 
   quantile_function <- function(x) {
+
     id <- unique(x$id)
     g <- unique(x$g)
     pseudo_att <- unique(x$pseudo_att)
     treat_var <- ifelse(max(!is.na(x$treat_var))>0, unique(x$treat_var[!is.na(x$treat_var)]), NA)
     boot_mean <- tapply(x$norm_residuals, x$B, FUN = mean, na.rm=T)      # mean of each bootstrap draw
-    p_value <- sum(abs(boot_mean*treat_var)>abs(pseudo_att))/nrow(boot_mean)        # p-value
+    p_value <- sum(abs(boot_mean*treat_var)>abs(pseudo_att),na.rm=T)/sum(!is.na(boot_mean))        # p-value
     return(list(data.frame(id=id, g=g, p_value=p_value)))
   }
   pre_treatment_p_value <- sapply(split(bootstraped_residuals[!treated,], as.formula(~id)), quantile_function)
