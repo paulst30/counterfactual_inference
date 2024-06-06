@@ -14,6 +14,7 @@ simple_staggered_did(
   varformula = NA,
   universal_base = FALSE,
   control_group = "never_treated",
+  bstrap = 200,
   data
 )
 }
@@ -52,14 +53,18 @@ last pretreatment period.}
 are used as controls. In case of the latter, the pretreatment periods 
 of not-yet-treated units are added to the pool of controls.}
 
+\item{bstrap}{A number indicating how many control units should be drawn for the bootstrap sample.
+When not specified, bstrap defaults to 200.}
+
 \item{data}{A data frame or tibble containing all relevant variables.}
 }
 \value{
-A list containing four data frames and an lm object. 
+A list containing three data frames. 
 The data frames contain the unit x time treatment effects, the unit-level 
-average treatment effects, the overall average treatment effect, and the 
-bootstrapped residuals used to calculate confidence intervals. 
-The lm object contains the details on the variance model.
+average treatment effects, the overall average treatment effect. The data frame
+with the unit-level average treatment effects also contains the p-value 
+indicating whether the average pseudo treatment effect is significantly different
+from zero.
 }
 \description{
 Estimates unit x time treatment effects, averages them on the unit-level and 

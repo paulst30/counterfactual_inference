@@ -31,7 +31,9 @@
 #' which should be the treatment level. Treatment effects are calculated at this unit x time level. 
 #' Aggregated treatment effects are aggregated at this unit level. 
 #' Unitname only needs to be specified, when the desired level of aggregation is not the idname. 
-#' When not specified, unitname is assumed to be the same as idname.   
+#' When not specified, unitname is assumed to be the same as idname.  
+#' @param bstrap A number indicating how many control units should be drawn for the bootstrap sample.
+#' When not specified, bstrap defaults to 200. 
 #' @param xformula A string vector containing all the variables that 
 #' should enter the outcome model as control variables.
 #' @param varformula A string vector containing all variables that determine 
@@ -46,16 +48,18 @@
 #' are used as controls. In case of the latter, the pretreatment periods 
 #' of not-yet-treated units are added to the pool of controls.
 #' 
-#' @returns A list containing four data frames and an lm object. 
+#' @returns A list containing three data frames. 
 #' The data frames contain the unit x time treatment effects, the unit-level 
-#' average treatment effects, the overall average treatment effect, and the 
-#' bootstrapped residuals used to calculate confidence intervals. 
-#' The lm object contains the details on the variance model.
+#' average treatment effects, the overall average treatment effect. The data frame
+#' with the unit-level average treatment effects also contains the p-value 
+#' indicating whether the average pseudo treatment effect is significantly different
+#' from zero.
 #' @example examples.R
 #' @export
 simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
                                  xformula = NA, varformula = NA, universal_base = FALSE, 
-                                 control_group = "never_treated", data){
+                                 control_group = "never_treated",
+                                 bstrap = 200, data){
   
   #-----------------------------------------------------------------------------
   # Data Preparation #
@@ -269,7 +273,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
       unique_controls <- unique(outcome_residuals[!is.na(outcome_residuals[,"norm_residuals"]), unitname])
       
       # draw a sample of 200 control units to derive the bootstrapped residuals
-      bootstrap_controls <- replicate(200,sample(unique_controls,size =  1 ,replace = TRUE), simplify = FALSE)
+      bootstrap_controls <- replicate(bstrap,sample(unique_controls,size =  1 ,replace = TRUE), simplify = FALSE)
       
       # relevant treatment effects to be matched to the bootstrapped residuals
       var_treated <- treatment_effects[treatment_effects[,unitname]==g, c(tname, "var", "att")]
@@ -380,6 +384,8 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   bootstraped_groupwise_average$analy_crit_val <- groupwise_atts$analy_crit_val[match(bootstraped_groupwise_average$id, groupwise_atts$id)]
   
   
+  
+  
   # Calculate simple average effects--------------------------------------------
   
   # Take the mean of all hypothetical unit x time treatment effects for each bootstrap iteration B. 
@@ -406,6 +412,36 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
                                            analy_crit_val = sd(treatment_effects$att[index], na.rm=T)/sqrt(n)*1.96,
                                            crit_val = overall_crit_val)
 
+ 
+  # Pre-Treatment Trend test ---------------------------------------------------
+  
+  # calculate mean pseudo treatment effect
+  mean_function <- function(x) {
+    mean_att <- mean(x$att, na.rm=T)
+    id <- unique(x[,unitname])
+    g <- unique(x[,gname])
+    return(list(data.frame(id=id, g=g, pseudo_att=mean_att)))
+  }
+  pseudo_pre_treatment_atts <- sapply(split(treatment_effects[treatment_effects$t<treatment_effects$group,], as.formula(~id)), mean_function)
+  pseudo_pre_treatment_atts <- do.call(rbind, pseudo_pre_treatment_atts)
+  
+  # attach mean pseudo treatment effect to bootstraped residuals
+  bootstraped_residuals$pseudo_att <- pseudo_pre_treatment_atts$pseudo_att[match(bootstraped_residuals$id,pseudo_pre_treatment_atts$id)]
+
+  quantile_function <- function(x) {
+    id <- unique(x$id)
+    g <- unique(x$g)
+    pseudo_att <- unique(x$pseudo_att)
+    treat_var <- ifelse(max(!is.na(x$treat_var))>0, unique(x$treat_var[!is.na(x$treat_var)]), NA)
+    boot_mean <- tapply(x$norm_residuals, x$B, FUN = mean, na.rm=T)      # mean of each bootstrap draw
+    p_value <- sum(abs(boot_mean*treat_var)>abs(pseudo_att))/nrow(boot_mean)        # p-value
+    return(list(data.frame(id=id, g=g, p_value=p_value)))
+  }
+  pre_treatment_p_value <- sapply(split(bootstraped_residuals[!treated,], as.formula(~id)), quantile_function)
+  pre_treatment_p_value <-do.call(rbind, pre_treatment_p_value)
+  
+  # attach p-values to group-wise treatment effects
+  bootstraped_groupwise_average$pre_treatment_p_value <- pre_treatment_p_value$p_value[match(bootstraped_groupwise_average$id, pre_treatment_p_value$id)]
   
   #-----------------------------------------------------------------------------
   # Output
