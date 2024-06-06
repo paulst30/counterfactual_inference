@@ -414,7 +414,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
 
  
   # Pre-Treatment Trend test ---------------------------------------------------
-  
+  browser()
   # calculate mean pseudo treatment effect
   mean_function <- function(x) {
     mean_att <- mean(x$att, na.rm=T)
@@ -422,7 +422,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
     g <- unique(x[,gname])
     return(list(data.frame(id=id, g=g, pseudo_att=mean_att)))
   }
-  pseudo_pre_treatment_atts <- sapply(split(treatment_effects[treatment_effects$t<treatment_effects$group,], as.formula(~id)), mean_function)
+  pseudo_pre_treatment_atts <- sapply(split(treatment_effects[treatment_effects[, tname]<treatment_effects[,gname],], as.formula(~id)), mean_function)
   pseudo_pre_treatment_atts <- do.call(rbind, pseudo_pre_treatment_atts)
   
   # attach mean pseudo treatment effect to bootstraped residuals
