@@ -414,7 +414,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
 
  
   # Pre-Treatment Trend test ---------------------------------------------------
-  browser()
+
   # calculate mean pseudo treatment effect
   mean_function <- function(x) {
     mean_att <- mean(x$att, na.rm=T)
