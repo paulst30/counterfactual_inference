@@ -19,3 +19,4 @@ output <- simple_staggered_did(yname = "y",
                                xformula = "x",
                                varformula = "z",
                                data = dta)
+
