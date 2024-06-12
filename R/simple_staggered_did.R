@@ -87,9 +87,9 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   #check if observations are uniquely identified
   duplicates <- duplicated(paste0(data[,idname],"_",data[,tname]))
   if (sum(duplicates)>0) {
-    warning(paste("Variables", idname, "and", tname, "do not uniquely identify all observations."))
+    stop(paste("Variables", idname, "and", tname, "do not uniquely identify all observations. Consider specifying unitname (see documentation for further information)."))
   }
-  
+
   #set formulas for outcome and variance model
   if (max(!is.na(xformula))) {
     form <- as.formula(paste("delta ~ 1 + treated_unit +", paste(xformula, collapse =  "+"))) 
@@ -221,7 +221,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
         outcome_model <- lm(form, 
                           data = X)
 
-        
+ 
       # save residuals and sample size of outcome model for later use
       index <- as.numeric(names(residuals(outcome_model)))
       residuals <- data.frame(data[posttreatment_period & (C | G),][index,], 
@@ -239,7 +239,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
       #treatment_effects$inv_obs[treatment_effects[,unitname]==g & treatment_effects[,tname]==t] <- 1/nrow(data[posttreatment_period & G,])
       
     }
-    
+
     outcome_residuals <- do.call(rbind, outcome_residuals)
 
     #---------------------------------------------------------------------------
