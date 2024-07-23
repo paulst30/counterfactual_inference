@@ -136,6 +136,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
     # define treated unit, control unit, and treatment timing
     pret <- as.numeric(group)-1                               # last period before treatment
     G <- data[,unitname] == g                                   # treated unit
+    data$treated_unit <- G
     C <- data[,gname] == 0                                    # all never-treated units
     
     # include not-yet-treated units in the control group if specified
@@ -217,6 +218,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
         next
       } 
       
+  
       # Estimate outcome model
         outcome_model <- lm(form, 
                           data = X)
