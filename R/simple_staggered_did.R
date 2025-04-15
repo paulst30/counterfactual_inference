@@ -68,14 +68,12 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   #make sure data is a sorted data frame
   data <- as.data.frame(data)
   
-  #expand data 
-  expanded_dta <- expand.grid(unit = unique(data[,idname]),period = unique(data[,tname]))
-  data <- merge(data,expanded_dta,by.x=c(idname,tname),by.y=c("unit","period"),all.y=T)
-  data[,gname] <- ave(data[,gname], data[,idname], FUN = function(x) max(x, na.rm=T))
-  data[,unitname] <- ave(data[,unitname], data[,idname], FUN = function(x) max(x, na.rm=T))
+  #check input data
+  check_inputs(data, yname, gname,tname, idname, unitname)
+  check_missings(data, gname, tname, idname, unitname)
   
-  #sort dataset
-  data <- data[order(data[,idname], data[,tname], decreasing=FALSE),]
+  #expand and sort data 
+  data <- expand_sort_data(data, yname, gname, tname, idname, unitname)
   
   #unpack inputs
   G <- (data[,gname]!=0)
@@ -85,25 +83,15 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   ulist <- as.vector(unique(data[,idname]))
   
   #check if observations are uniquely identified
-  duplicates <- duplicated(paste0(data[,idname],"_",data[,tname]))
-  if (sum(duplicates)>0) {
-    stop(paste("Variables", idname, "and", tname, "do not uniquely identify all observations. Consider specifying unitname (see documentation for further information)."))
-  }
+  check_duplicates(data, idname, tname)
 
+  
   #set formulas for outcome and variance model
-  if (max(!is.na(xformula))) {
-    form <- as.formula(paste("delta ~ 1 + treated_unit +", paste(xformula, collapse =  "+"))) 
-  } else {
-    form <- as.formula(paste("delta ~ 1 + treated_unit"))
-  }
+  form <- get_x_formula(xformula)
+  var_form <- get_var_formula(varformula)
   
-  if (max(!is.na(varformula))) {
-    var_form <- as.formula(paste("residuals^2 ~ 1 + ", paste(paste0("I(",varformula, "^-1)"), collapse =  "+"))) 
-  } else {
-    var_form <- as.formula(paste("residuals^2 ~ 1"))
-  }
-  
-  # reduce dataset to necessary variables 
+
+    # reduce dataset to necessary variables 
    necessary_var <- if(max(!is.na(varformula))) c(unitname, gname, tname, varformula) else c(unitname, gname, tname)
   
    
@@ -122,8 +110,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
                                   att = NA,
                                   analy_crit_val =NA)
   
-  treatment_effects <- treatment_effects[!duplicated(paste0(treatment_effects[,unitname],"_",treatment_effects[,tname])),]
-  
+
   #-----------------------------------------------------------------------------
   # Estimate Outcome Model, Treatment Effects, and track Residuals
   #-----------------------------------------------------------------------------
@@ -135,18 +122,9 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
     
     # define treated unit, control unit, and treatment timing
     pret <- as.numeric(group)-1                               # last period before treatment
-    G <- data[,unitname] == g                                   # treated unit
+    G <- (data[,unitname] == g)                                   # treated unit
     data$treated_unit <- G
-    C <- data[,gname] == 0                                    # all never-treated units
-    
-    # include not-yet-treated units in the control group if specified
-    if (control_group=="not_yet_treated") {
-      control <- data[,gname] == 0                            # never-treated units again
-      not_yet_treated <- !(data[,gname] %in% c(0, group)) &   # exclude units that are never treated and are treated simultaneously
-                          (data[, tname] < data[,gname]) &    # include only time periods before units are treated themselves
-                          (data[,gname] > group)              # include only units that are treated after the current treated unit
-      C <- (control | not_yet_treated)
-    }
+    C <- define_control_group(data, gname, tname, group, control_group)
     
     
     # estimate the difference to last pre-treatment period 
