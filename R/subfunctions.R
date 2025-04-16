@@ -127,5 +127,51 @@ define_control_group <- function(data, gname, tname, group, control_group){
 }
 
 
+#' @title Difference to reference value calculator
+#' @keywords internal
+diff_to_ref <- function(data, tname, yname, pret) {
+  
+  # last value before treatment
+  reference_value <- data[data[, tname]==pret ,yname]
+  
+  # difference to reference value
+  delta <- data.frame(delta = data[,yname]-reference_value)
+  
+  # ensure right indexes
+  rownames(delta) <- rownames(data)
+  
+  return(delta)
+}
+
+
+#' @title simple difference calculator
+#' @keywords internal
+diff_1lag <- function(data, tname, yname, pret) {
+  
+  # check whether data is sorted
+  if (!(all(data[, tname]==sort(data[,tname])))){
+    data <- data[order(data[,tname]),]
+  }
+  
+  # calculate difference
+  diff <- data.frame(diff= c(NA,diff(data[,yname], lag=1)))
+  
+  # ensure right indexes
+  rownames(diff) <- rownames(data)
+  
+  return(diff)  
+}
+
+
+#' @title difference_builder
+#' @keywords internal
+difference_builder <- function(data, idname, tname, yname, pret) {
+  
+  
+  
+}
+
+
+
 
 
