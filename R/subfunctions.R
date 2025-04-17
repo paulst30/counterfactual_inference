@@ -147,9 +147,10 @@ diff_to_ref <- function(data, tname, yname, pret) {
 #' @title simple difference calculator
 #' @keywords internal
 diff_1lag <- function(data, tname, yname, pret) {
-  
+
   # check whether data is sorted
   if (!(all(data[, tname]==sort(data[,tname])))){
+    index <- row.names(data)
     data <- data[order(data[,tname]),]
   }
   
@@ -159,16 +160,54 @@ diff_1lag <- function(data, tname, yname, pret) {
   # ensure right indexes
   rownames(diff) <- rownames(data)
   
+  # ensure original ordering
+  if (exists("index")){
+    diff <- as.data.frame(diff[index,])
+    row.names(diff) <- index
+  }
+  
   return(diff)  
 }
 
 
 #' @title difference_builder
 #' @keywords internal
-difference_builder <- function(data, idname, tname, yname, pret) {
+difference_builder <- function(data, idname, tname, yname, pret, universal_base) {
+  
+  # save initial index
+  initial_index <- row.names(data)
+  
+  # calculate first differences
+  diff_ref_val <- lapply(split(data, data[,idname]), FUN = diff_to_ref, tname = tname,yname = yname, pret = pret)
+  new_index <- lapply(split(data, data[,idname]), FUN = row.names)
+
+  # attach correct index
+  new_index <- unlist(new_index)
+  diff_ref_val <- as.data.frame(unlist(diff_ref_val))
+  names(diff_ref_val) <- "diff_ref"
+  row.names(diff_ref_val) <- new_index
+  
+  # add first differences before the treatment if universal_base is False
+  if (!universal_base) {
+    diff_val <- lapply(split(data, data[,idname]), FUN = diff_1lag, tname = tname,yname = yname, pret = pret)
+    diff_val <- as.data.frame(unlist(diff_val))
+    
+    # recreate correct index
+    names(diff_val) <- "diff"
+    row.names(diff_val) <- new_index
+    
+    # merge by index
+    diff_ref_val$diff_val <- diff_val[new_index,"diff"]
+  }
+  
+  # restore old ordering
+  diff_ref_val <- diff_ref_val[initial_index,]
+  
+  # assign final differenced variable
+  diff_ref_val$delta <- ifelse(data[,tname]<=pret, diff_ref_val$diff_val, diff_ref_val$diff_ref)
   
   
-  
+  return(diff_ref_val$delta)
 }
 
 

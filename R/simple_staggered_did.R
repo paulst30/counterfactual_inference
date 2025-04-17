@@ -128,33 +128,10 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
     
     
     # estimate the difference to last pre-treatment period 
-    data$delta <- NA
-    for (id in ulist){
-      group_indices <- data[, idname] == id 
-      pretreatment_period <- data[,tname]== pret                                      # base periods for all units
-      reference_value <- as.numeric(data[group_indices & pretreatment_period, yname]) # value in the base period for every unit
-      if (length(reference_value)==0) {                                               # skip to the next iteration if the base period is missing
-        print(paste0("Base period (",pret ,") is missing for unit ",id ))
-        next
-      }
-      data[group_indices, "delta"] <- data[group_indices, yname] - reference_value    # calculate changes in the outcome variable (delta)
-    }
-   
-    # change pretreatment delta to first differences if base period is not "universal"
-    if (!universal_base) {
-      difference <- function(x){                                                # function returns a vector of first differences where possible and NA otherwise
-        first_diff <- ifelse(is.na(x[,yname]) | is.na(c(tail(x[,yname], -1), NA)) , NA ,diff(x[,yname], lead=1))
-        return(list(first_diff))
-      }
-      first_diff <-  sapply(split(data, data[,idname]), FUN = difference)
-      first_diff <- unlist(first_diff)
-      
-      data$first_diff <- first_diff
-      
-      # replace delta for pretreatment periods
-      data$delta <- ifelse(data[, tname]<=pret, data$first_diff, data$delta)
-    }
+    # and if specified the first differences for pretreatment values
+    data$delta <- difference_builder(data, idname, tname, yname, pret, universal_base)
     
+
     #are there any missings in the dataset?
     necessary_var <- if(max(!is.na(xformula))) c(unitname, gname, tname,"delta", xformula) else c(unitname, gname, tname, "delta")
     n_missing <- complete.cases(data[,necessary_var])                  # indicates all observations for which a delta and all variables of the outcome model are non-missing
