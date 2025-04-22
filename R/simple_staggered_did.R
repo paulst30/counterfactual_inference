@@ -98,17 +98,8 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   # Set up output objects
   output <- list()                                           # empty output objects
   
-  bootstraped_residuals <- data.frame(g=numeric(),           # data frame to track bootstraped residuals
-                                      id=numeric(),
-                                      B=numeric(),
-                                      t=numeric(),
-                                      boot_res=numeric(),
-                                      tt=numeric())
-  
-  
-  treatment_effects <- data.frame(data[G,necessary_var],     # data frame to track treatment effects for treated units
-                                  att = NA,
-                                  analy_crit_val =NA)
+  bootstraped_residuals <- list()          # list to track bootstraped residuals
+  treatment_effects <- list()              # to track treatment effects for treated units
   
 
   #-----------------------------------------------------------------------------
@@ -136,69 +127,32 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
     necessary_var <- if(max(!is.na(xformula))) c(unitname, gname, tname,"delta", xformula) else c(unitname, gname, tname, "delta")
     n_missing <- complete.cases(data[,necessary_var])                  # indicates all observations for which a delta and all variables of the outcome model are non-missing
     
-    # outcome residuals for specific group
+    # outcome residuals and treatment for specific group/unit
     outcome_residuals <- list()
+    treatment_effects_list <- list()
     
     
     #loop over time periods to estimate a outcome model for each period
     for (t in tlist) {
+      outcome_list <- estimate_outcome_model(data, tname, idname, unitname, t, C, G, g, pret, xformula, form)
       
-      # set current period
-      posttreatment_period <- data[,tname]==t
-      
-      # Put together necessary data
-      y <- as.data.frame(data[posttreatment_period & (C | G), c("delta", unitname, tname, idname)])
-      row.names(y) <- NULL
-      
-      if (max(!is.na(xformula))) {
-       X <- as.data.frame(data[(C | G) & data[,tname] == pret, c(unitname, "treated_unit", xformula, idname)] )
-       row.names(X) <- NULL
-      } else {
-       X <- as.data.frame(data[(C | G) & data[,tname] == pret, c(unitname, "treated_unit", idname)])
-       row.names(X) <- NULL
+      if (!is.null(outcome_list[[1]])) {
+        outcome_residuals[[t]] <- outcome_list[[1]]
+        treatment_effects_list[[t]] <- outcome_list[[2]]
       }
-     
-      X <- merge(y,X, by.x=c(idname), by.y=c(idname), all.x= TRUE)
-      
-      #check if there are enough observations, skip iteration if not
-      if (!max(complete.cases(X[X[,"treated_unit"]==1,]))) {
-        warning(paste("Incomplete observation for treated unit ", g," in period ", t,
-                      ". Either the outcome variable is missing in period ", t," or ", pret, 
-                      ", or one of the control variables is missing in ", pret))
+      else {
         next
-      } 
-      
-      if (!max(complete.cases(X[X[,"treated_unit"]!=1,]))) {
-        warning(paste("No control units for treated unit", g,"in period", t))
-        next
-      } 
-      
-  
-      # Estimate outcome model
-        outcome_model <- lm(form, 
-                          data = X)
-
- 
-      # save residuals and sample size of outcome model for later use
-      index <- as.numeric(names(residuals(outcome_model)))
-      residuals <- data.frame(data[posttreatment_period & (C | G),][index,], 
-                               residuals = residuals(outcome_model))
-      obs <- nrow(residuals)
-      #outcome_residuals$inv_obs[outcome_residuals[,tname]==t] <- 1/obs
-      outcome_residuals[[t]] <- residuals[residuals[,unitname]!=g,]
-      
-      
-      # save treatment effect and analytical standard errors
-      treatment_effects[treatment_effects[,unitname]==g & treatment_effects[,tname]==t, "att"] <- outcome_model$coefficients[2]
-      treatment_effects[treatment_effects[,unitname]==g & treatment_effects[,tname]==t, "analy_crit_val"] <- sqrt(diag(vcov(outcome_model))/obs)[2]*1.96
-      
-      # save number of treated observations
-      #treatment_effects$inv_obs[treatment_effects[,unitname]==g & treatment_effects[,tname]==t] <- 1/nrow(data[posttreatment_period & G,])
+      }
       
     }
-
+    browser()
     outcome_residuals <- do.call(rbind, outcome_residuals)
-
+    treatment_effects_list <- do.call(rbind, treatment_effects_list)
+    
+    # match treatment effects with variables required for variance model
+    treatment_effects_list <- merge(treatment_effects_list, data[,c(varformula, unitname, tname)], by=c(unitname, tname), all.x=TRUE)
+    
+    
     #---------------------------------------------------------------------------
     # Estimate variance and control for heteroscedasticity
     #---------------------------------------------------------------------------
@@ -219,7 +173,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
       outcome_residuals$norm_residuals <-outcome_residuals$residuals / sqrt(predict(object=var_model, data=outcome_residuals))
 
     # estimate the standard errors of the treated
-      treatment_effects$var <- sqrt(predict(object = var_model, newdata = treatment_effects))
+      treatment_effects_list$var <- sqrt(predict(object = var_model, newdata = treatment_effects_list))
 
     #---------------------------------------------------------------------------
     # Bootstrap normalized residuals
@@ -233,7 +187,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
       bootstrap_controls <- replicate(bstrap,sample(unique_controls,size =  1 ,replace = TRUE), simplify = FALSE)
       
       # relevant treatment effects to be matched to the bootstrapped residuals
-      var_treated <- treatment_effects[treatment_effects[,unitname]==g, c(tname, "var", "att")]
+      var_treated <- treatment_effects_list[treatment_effects_list[,unitname]==g, c(tname, "var", "att")]
       
       # create empty list to save results
       bootstraped_res <- list()
@@ -253,11 +207,16 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
       
       # consolidate list into one data frame with resized residuals
       bootstraped_res <- do.call(rbind, bootstraped_res)
-      bootstraped_residuals <- rbind(bootstraped_residuals, bootstraped_res)
       
+      # save to results to lists
+      treatment_effects[[g]] <- treatment_effects_list
+      bootstraped_residuals[[g]] <- bootstraped_res
 
   }
   }
+  
+  treatment_effects <- do.call(rbind, treatment_effects_list)
+  bootstraped_residuals <- do.call(rbind, bootstraped_residuals_list)
   
   #-----------------------------------------------------------------------------
   # Estimate confidence intervals

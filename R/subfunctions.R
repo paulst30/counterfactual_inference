@@ -58,7 +58,7 @@ expand_sort_data <- function(data, yname, gname, tname, idname, unitname){
 
 
 #' @title check duplicates
-#' @keyword internal
+#' @keywords internal
 check_duplicates <- function(data, idname, tname) {
   duplicates <- duplicated(paste0(data[,idname],"_",data[,tname]))
   if (sum(duplicates)>0) {
@@ -213,4 +213,77 @@ difference_builder <- function(data, idname, tname, yname, pret, universal_base)
 
 
 
+# estimate outcome model for each time period
+#' @title outcome model estimator
+#' @description
+#' This function estimates the outcome model and the ATTs for one time period. It is supposed to 
+#' in a loop over all time periods with t being the period of the current iteration. 
+#' It takes the data as an input and returns a list with outcome_residuals and the treatment effects.  
+#' @keywords internal
+estimate_outcome_model <- function(data, tname, idname, unitname, t, C, G, g, pret, xformula, form) {
 
+  # define list to store results
+  outcome_list <- list()
+  
+  # set current period
+  posttreatment_period <- data[,tname]==t
+  
+  # Put together necessary data
+  y <- as.data.frame(data[posttreatment_period & (C | G), c("delta", unitname, tname, idname)])
+  
+  if (max(!is.na(xformula))) {
+    X <- as.data.frame(data[(C | G) & data[,tname] == pret, c(unitname, "treated_unit", xformula, idname)] )
+    row.names(X) <- NULL
+  } else {
+    X <- as.data.frame(data[(C | G) & data[,tname] == pret, c(unitname, "treated_unit", idname)])
+    row.names(X) <- NULL
+  }
+  
+  y <- y[y[,idname] %in% X[,idname],]
+  
+  
+  X <- merge(y,X, by.x=c(idname), by.y=c(idname), all.x= TRUE)
+  row.names(X) <- row.names(y)
+  
+  #check if there are enough observations, skip iteration if not
+  if (!max(complete.cases(X[X[,"treated_unit"]==1,]))) {
+    log_text <- paste("Incomplete observation for treated unit ", g," in period ", t,
+                  ". Either the outcome variable is missing in period ", t," or ", pret, 
+                  ", or one of the control variables is missing in ", pret)
+    return(list(NULL,NULL))
+  } 
+  
+  if (!max(complete.cases(X[X[,"treated_unit"]!=1,]))) {
+    log_text <- paste("No control units for treated unit", g,"in period", t)
+    return(list(NULL,NULL))
+  } 
+  
+  
+  # Estimate outcome model
+  outcome_model <- lm(form, 
+                      data = X)
+  
+  
+  # save residuals and sample size of outcome model for later use
+  index <- names(residuals(outcome_model))
+  residuals <- data.frame(data[index,], 
+                          residuals = residuals(outcome_model))
+  obs <- nrow(residuals)
+  outcome_list[[1]] <- residuals[residuals[,unitname]!=g,]
+  
+  # add log info if obs==2 -> no analytical crit value computable
+  
+  
+  # save treatment effect and analytical standard errors
+  treatment_effects <- data.frame(unit = g,
+                                  time =t, 
+                                  att = outcome_model$coefficients[2],
+                                  analy_crit_val = sqrt(diag(vcov(outcome_model))/obs)[2]*1.96)
+  names(treatment_effects) <- c(unitname, tname, "att", "analy_crit_val")
+  outcome_list[[2]] <- treatment_effects
+  return(outcome_list)
+}
+
+# Reminder
+# outcome_residuals[[t]] <- outcome_list[[1]]
+# treatment_effects <- rbind(treatment_effects, outcome_list[[2]])

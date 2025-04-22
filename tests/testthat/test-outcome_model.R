@@ -112,6 +112,81 @@ test_that("difference_builder", {
 })
 
 
+# test for the outcome model 
+test_that("outcome_model", {
+  
+  test_data <- data.frame(delta = c(2,14,1,2,2,4,3,6),
+                          x = c(4,36,2,4,4,8,6,12),
+                          id = c(1,1,2,2,3,3,4,4),
+                          treated_unit = c(1,1,0,0,0,0,0,0),
+                          unit = c(1,1,2,2,3,3,4,4),
+                          time = c(3,5,3,5,3,5,3,5))
+  rownames(test_data) <- c(3,4,5,6,7,8,9,10)
+  pret <- 3
+  t <- 5
+  C <- c(FALSE,FALSE,TRUE,TRUE,TRUE,TRUE,TRUE, TRUE)
+  G <- c(TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE, FALSE)                 # index for the current treated unit in the original data
+  g <- 1                                      # unitname of the treated unit             
+  xformula <- c("x")
+  form <- as.formula(delta ~ 1 + treated_unit + x)
+  
+  # Standard case: without errors?
+  expect_no_error(estimate_outcome_model(test_data, "time", "id", "unit", t, C, G, g, pret, xformula, form))
+  
+  
+  outcome_list <- estimate_outcome_model(test_data, "time", "id", "unit", t, C, G, g, pret, xformula, form)
+  residuals <- outcome_list[[1]]
+  treatment_effects <- outcome_list[[2]]
+
+  # Standard case: correct atts?
+  expect_equal(treatment_effects$att, 10, tolerance = 0.2)
+    # Standard case: correct residuals?
+  expect_equal(residuals$residuals, c(0,0,0))
+  
+  # with missings in control y
+  test_data["10", "delta"] <- NA
+
+  outcome_list <- estimate_outcome_model(test_data, "time", "id", "unit", t, C, G, g, pret, xformula, form)
+  residuals <- outcome_list[[1]]
+  treatment_effects <- outcome_list[[2]]
+  
+  expect_equal(treatment_effects$att, 10, tolerance = 0.2)
+  expect_equal(residuals$residuals, c(0,0))
+  
+  
+  # with missings in control x
+  test_data["10", "delta"] <- 6
+  test_data["9", "x"] <- NA
+  
+  outcome_list <- estimate_outcome_model(test_data, "time", "id", "unit", t, C, G, g, pret, xformula, form)
+  residuals <- outcome_list[[1]]
+  treatment_effects <- outcome_list[[2]]
+  
+  expect_equal(treatment_effects$att, 10, tolerance = 0.2)
+  expect_equal(residuals$residuals, c(0,0))
+
+  
+  # missing in treated x
+  test_data["3", "x"] <- NA
+  
+  outcome_list <- estimate_outcome_model(test_data, "time", "id", "unit", t, C, G, g, pret, xformula, form)
+  
+  expect_null(outcome_list[[1]])
+  expect_null(outcome_list[[2]])
+  
+  # missing in treated y
+  test_data["3", "x"] <- 4
+  test_data["4", "delta"] <- NA
+  
+  outcome_list <- estimate_outcome_model(test_data, "time", "id", "unit", t, C, G, g, pret, xformula, form)
+  
+  expect_null(outcome_list[[1]])
+  expect_null(outcome_list[[2]])
+  
+})
+
+
+
 
 
 

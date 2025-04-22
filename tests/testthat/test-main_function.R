@@ -32,16 +32,19 @@ test_that("sanity check",{
                                        data = dta))
   
   # are the aggregate results correct? 
-  expect_equal(results$average_treatment_effect$att, 10, tolerance = 4)
+  expect_equal(results$average_treatment_effect$att, 10, tolerance = 0.4)
   
   # are the group-wise results correct?
-  expect_equal(results$groupwise_treatment_effects$att, c(10,10), tolerance = 4)
+  expect_equal(results$groupwise_treatment_effects$att, c(10,10), tolerance = 0.4)
   
   # are critical values correct?
   # Var[e] = E[(1+z)^2] = 5
-  expect_equal(mean(results$grouptime_treatment_effects$crit_val), 5, tolerance = 3)
+  expect_equal(mean(results$grouptime_treatment_effects$crit_val), 5, tolerance = 0.3)
   
   # are the pretreatment pvalues correct? 
   #expect_true(results$groupwise_treatment_effects$pre_treatment_p_value > 0.05)
 })
 
+
+
+# test the number of residuals 
