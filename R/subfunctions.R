@@ -211,8 +211,6 @@ difference_builder <- function(data, idname, tname, yname, pret, universal_base)
 }
 
 
-
-
 # estimate outcome model for each time period
 #' @title outcome model estimator
 #' @description
@@ -284,6 +282,49 @@ estimate_outcome_model <- function(data, tname, idname, unitname, t, C, G, g, pr
   return(outcome_list)
 }
 
-# Reminder
-# outcome_residuals[[t]] <- outcome_list[[1]]
-# treatment_effects <- rbind(treatment_effects, outcome_list[[2]])
+#-------------------------------------------------------------------------------
+# Functions used to estimate confidence intervals
+#-------------------------------------------------------------------------------
+
+
+
+#' @title calculate group-time average effects
+#' @description
+#' A short description...
+#' It takes as input the residuals data for one treated unit (provided to it via
+#' lappy(split())). This data includes all bootstraped residuals for every point
+#' in time. Based on that, the function calculates the critical values (double-sided
+#' left- and right-sided) and the uniform critical value.
+#' @keywords internal
+cal_group_time_effects <- function(x) {                                           # If there are bootstraped residuals for a unit+time observation...
+  
+  if (sum(!is.na(x$boot_res))>0 & nrow(x)>0) {
+    maxima <- tapply(abs(x$boot_res), x[,tname], FUN = function(v) {
+      if (all(is.na(v))) NA else max(v, na.rm = TRUE)
+    })                                                                       # Get maxima for each period t
+    uniform_crit_val <- quantile(maxima, prob=0.95, na.rm=T)                 # calculate the 95% confidence value of maxima.
+    crit_val <- tapply(abs(x$boot_res), x[,tname], FUN=function(x) quantile(x,prob=0.95, na.rm=T))
+    crit_val_left <- tapply(x$boot_res, x[,tname], FUN=function(x) quantile(x,prob=0.05, na.rm=T))
+    crit_val_right <- tapply(x$boot_res, x[,tname], FUN=function(x) quantile(x,prob=0.95, na.rm=T))
+    
+  } else if (sum(!is.na(x$boot_res))==0 & nrow(x)>0) {                       # If there is only missing data for a specific unit x time combination
+    crit_val <- rep(NA, length(unique(x[,tname])))                           # set the critical value to NA also
+    uniform_crit_val <- rep(NA, length(unique(x[,tname])))
+  } else if (nrow(x)==0) {                                                   # If there is no data at all, return an empty vector
+    crit_val <- numeric()
+    uniform_crit_val <- numeric()
+  }
+  
+  id <- unique(x$id)
+  t <- unique(x[,tname])
+  g <- unique(x$g)
+  
+  return(list(data.frame(id=id, g=g, t=t, crit_val=crit_val, uniform_crit_val=uniform_crit_val)))
+  
+}
+
+
+
+
+
+

@@ -72,6 +72,13 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   check_inputs(data, yname, gname,tname, idname, unitname)
   check_missings(data, gname, tname, idname, unitname)
   
+  # check if any variables used in the variance estimation are zero or below one (which might cause NaNs)
+  for (z in varformula) {
+    if (any(data[,z]>-1 & data[,z]<1)) {
+      warning(paste("Variable", z, "has values close zero. This might lead to NAs in confidence intervals.")) 
+    }
+  }
+  
   #expand and sort data 
   data <- expand_sort_data(data, yname, gname, tname, idname, unitname)
   
@@ -145,12 +152,12 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
       }
       
     }
-    browser()
+
     outcome_residuals <- do.call(rbind, outcome_residuals)
     treatment_effects_list <- do.call(rbind, treatment_effects_list)
     
     # match treatment effects with variables required for variance model
-    treatment_effects_list <- merge(treatment_effects_list, data[,c(varformula, unitname, tname)], by=c(unitname, tname), all.x=TRUE)
+    treatment_effects_list <- merge(treatment_effects_list, data[,c(varformula, gname, unitname, tname)], by=c(unitname, tname), all.x=TRUE)
     
     
     #---------------------------------------------------------------------------
@@ -170,7 +177,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
                       na.action = "na.exclude")
 
     # normalize the residuals by dividing them by their (expected) standard error
-      outcome_residuals$norm_residuals <-outcome_residuals$residuals / sqrt(predict(object=var_model, data=outcome_residuals))
+      suppressWarnings(outcome_residuals$norm_residuals <-outcome_residuals$residuals / sqrt(predict(object=var_model, data=outcome_residuals)))
 
     # estimate the standard errors of the treated
       treatment_effects_list$var <- sqrt(predict(object = var_model, newdata = treatment_effects_list))
@@ -207,17 +214,17 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
       
       # consolidate list into one data frame with resized residuals
       bootstraped_res <- do.call(rbind, bootstraped_res)
-      
+
       # save to results to lists
       treatment_effects[[g]] <- treatment_effects_list
       bootstraped_residuals[[g]] <- bootstraped_res
 
   }
   }
-  
-  treatment_effects <- do.call(rbind, treatment_effects_list)
-  bootstraped_residuals <- do.call(rbind, bootstraped_residuals_list)
-  
+
+  treatment_effects <- do.call(rbind, treatment_effects)
+  bootstraped_residuals <- do.call(rbind, bootstraped_residuals)
+
   #-----------------------------------------------------------------------------
   # Estimate confidence intervals
   #-----------------------------------------------------------------------------
@@ -284,7 +291,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   
   # calculate actual average atts
   treatment_effects$id <- treatment_effects[,unitname]
-  
+
   mean_function <- function(x) {
     index <- x[,tname]>=x[,gname]
     n <- nrow(x[index & !is.na(x$att),])
