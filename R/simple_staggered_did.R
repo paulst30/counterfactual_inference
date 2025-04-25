@@ -230,32 +230,8 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   #-----------------------------------------------------------------------------
  
   # Calculate group-time average effects----------------------------------------
-  quantile_function <- function(x) {                                           # If there are bootstraped residuals for a unit+time observation...
- 
-    if (sum(!is.na(x$boot_res))>0 & nrow(x)>0) {
-      maxima <- tapply(abs(x$boot_res), x[,tname], FUN = function(v) {
-        if (all(is.na(v))) NA else max(v, na.rm = TRUE)
-      })                                                                       # Get maxima for each period t
-      uniform_crit_val <- quantile(maxima, prob=0.95, na.rm=T)                 # calculate the 95% confidence value of maxima.
-      crit_val <- tapply(abs(x$boot_res), x[,tname], FUN=function(x) quantile(x,prob=0.95, na.rm=T))
-
-    } else if (sum(!is.na(x$boot_res))==0 & nrow(x)>0) {                       # If there is only missing data for a specific unit x time combination
-      crit_val <- rep(NA, length(unique(x[,tname])))                           # set the critical value to NA also
-      uniform_crit_val <- rep(NA, length(unique(x[,tname])))
-    } else if (nrow(x)==0) {                                                   # If there is no data at all, return an empty vector
-      crit_val <- numeric()
-      uniform_crit_val <- numeric()
-    }
-    
-    id <- unique(x$id)
-    t <- unique(x[,tname])
-    g <- unique(x$g)
-    
-    
-    return(list(data.frame(id=id, g=g, t=t, crit_val=crit_val, uniform_crit_val=uniform_crit_val)))
-    
-  }
-  bootstraped_grouptime_average <- sapply(split(bootstraped_residuals, as.formula(~id)), quantile_function)
+  
+  bootstraped_grouptime_average <- sapply(split(bootstraped_residuals, as.formula(~id)), cal_group_time_effects, tname=tname)
   bootstraped_grouptime_average <- do.call(rbind, bootstraped_grouptime_average)
   bootstraped_grouptime_average$att <- treatment_effects$att[match(paste0(bootstraped_grouptime_average$id,bootstraped_grouptime_average$t),
                                                                    paste0(treatment_effects[,unitname], treatment_effects[,tname]))]
@@ -273,17 +249,8 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   # This leads to a bootstrap sample (B=200) for each unit. 
   # Take the maxima of the 200 bootstraped means per unit.
   # The 95% quantile of all maxima represents the uniform ciritical value.
-  
-  quantile_function <- function(x) {
-    id <- unique(x$id)
-    g <- unique(x$g)
-    treat_var <- ifelse(max(!is.na(x$treat_var))>0, unique(x$treat_var[!is.na(x$treat_var)]), NA)
-    boot_mean <- tapply(x$norm_residuals, x$B, FUN = mean, na.rm=T)      # mean of each bootstrap draw
-    crit_val <- quantile(boot_mean, prob=0.95, na.rm=T)*treat_var        # regular pointwise CI
-    norm_maxima <- max(boot_mean)                                        # maximum of bootstraped means for uniform CI
-    return(list(data.frame(norm_maxima=norm_maxima, treat_var=treat_var, id=id, g=g, crit_val=crit_val)))
-  }
-  bootstraped_groupwise_average <- sapply(split(bootstraped_residuals[treated,], as.formula(~id)), quantile_function)
+
+  bootstraped_groupwise_average <- sapply(split(bootstraped_residuals[treated,], as.formula(~id)), cal_group_crit_vals)
   bootstraped_groupwise_average <- do.call(rbind, bootstraped_groupwise_average)
   
   # Use the maxima of bootstraped means to calculate 95% confidence intervals of the unit ATTs

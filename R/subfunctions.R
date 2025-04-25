@@ -290,13 +290,12 @@ estimate_outcome_model <- function(data, tname, idname, unitname, t, C, G, g, pr
 
 #' @title calculate group-time average effects
 #' @description
-#' A short description...
 #' It takes as input the residuals data for one treated unit (provided to it via
 #' lappy(split())). This data includes all bootstraped residuals for every point
 #' in time. Based on that, the function calculates the critical values (double-sided
 #' left- and right-sided) and the uniform critical value.
 #' @keywords internal
-cal_group_time_effects <- function(x) {                                           # If there are bootstraped residuals for a unit+time observation...
+cal_group_time_effects <- function(x, tname) {                                           # If there are bootstraped residuals for a unit+time observation...
   
   if (sum(!is.na(x$boot_res))>0 & nrow(x)>0) {
     maxima <- tapply(abs(x$boot_res), x[,tname], FUN = function(v) {
@@ -308,7 +307,9 @@ cal_group_time_effects <- function(x) {                                         
     crit_val_right <- tapply(x$boot_res, x[,tname], FUN=function(x) quantile(x,prob=0.95, na.rm=T))
     
   } else if (sum(!is.na(x$boot_res))==0 & nrow(x)>0) {                       # If there is only missing data for a specific unit x time combination
-    crit_val <- rep(NA, length(unique(x[,tname])))                           # set the critical value to NA also
+    crit_val <- rep(NA, length(unique(x[,tname])))
+    crit_val_left <- rep(NA, length(unique(x[,tname])))      # set the critical value to NA also
+    crit_val_right <- rep(NA, length(unique(x[,tname])))
     uniform_crit_val <- rep(NA, length(unique(x[,tname])))
   } else if (nrow(x)==0) {                                                   # If there is no data at all, return an empty vector
     crit_val <- numeric()
@@ -319,11 +320,49 @@ cal_group_time_effects <- function(x) {                                         
   t <- unique(x[,tname])
   g <- unique(x$g)
   
-  return(list(data.frame(id=id, g=g, t=t, crit_val=crit_val, uniform_crit_val=uniform_crit_val)))
+  return(list(data.frame(id=id, g=g, t=t, 
+                         crit_val=crit_val,
+                         crit_val_left=crit_val_left,
+                         crit_val_right=crit_val_right,
+                         uniform_crit_val=uniform_crit_val)))
   
 }
 
 
+#' @title calculate group-wise critical values
+#' @description
+#' It takes as input the residuals data for one treated unit (provided to it via
+#' lappy(split())). This data includes all bootstraped residuals for every point
+#' in time. Based on that, the function calculates the critical values (double-sided
+#' left- and right-sided) and the uniform critical value on the group-level. To 
+#' do this, it first takes the average for all bootstraped units. Then it uses 
+#' the 'bstrp' averages to infer percentiles for the confidence intervals. 
+#' 
+#' For the uniform confidence interval, it extracts the maximum of the 'bstrap' 
+#' averages. Later, these maxima (one for each treated unit/group) provide the 
+#' basis for infering the 95% uniform confidence interval.
+#' @keywords internal
+cal_group_crit_vals <- function(x) {
+  
+  id <- unique(x$id)
+  g <- unique(x$g)
+  treat_var <- ifelse(max(!is.na(x$treat_var))>0, unique(x$treat_var[!is.na(x$treat_var)]), NA)
+  boot_mean <- tapply(x$norm_residuals, x$B, FUN = mean, na.rm=T)      # mean of each bootstrap draw
+  crit_val <- quantile(abs(boot_mean), prob=0.95, na.rm=T)*treat_var        # regular pointwise CI
+  crit_val_left <- quantile(boot_mean, prob=0.05, na.rm=T)*treat_var        # left pointwise CI
+  crit_val_right <- quantile(boot_mean, prob=0.95, na.rm=T)*treat_var        # right pointwise CI
+  suppressWarnings(norm_maxima <- max(abs(boot_mean), na.rm = TRUE))                  # maximum of bootstraped means for uniform CI
+  if(norm_maxima == -Inf) norm_maxima <- NA
+  
+  
+  return(list(data.frame(norm_maxima=norm_maxima, 
+                         treat_var=treat_var, 
+                         id=id, 
+                         g=g, 
+                         crit_val=crit_val,
+                         crit_val_left=crit_val_left,
+                         crit_val_right=crit_val_right)))
+}
 
 
 
