@@ -365,5 +365,79 @@ cal_group_crit_vals <- function(x) {
 }
 
 
+# tests???
+#' @title calculate group wise atts
+#' @description
+#' This function is applied to the dataframe for the treatment effects. 
+#' It is applied to the treatment effects of all units separately (using sapply).
+#' It then returns a dataframe including all the averaged treatment effects for
+#' each id. 
+#' @keywords internal
+cal_group_atts <- function(x, tname, gname, unitname) {
+  
+  index <- x[,tname]>=x[,gname]
+  n <- nrow(x[index & !is.na(x$att),])
+  mean_att <- mean(x$att[index], na.rm=T)
+  analy_crit_val<- sd(x$att[index], na.rm = T)/sqrt(n)*1.96
+  id <- unique(x[,unitname])
+  g <- unique(x[,gname])
+  
+  return(list(data.frame(id=id, g=g, att=mean_att, analy_crit_val=analy_crit_val)))
+}
 
+
+#' @title calculate simple average crit values
+#' @description
+#' This function is designed to be applied to the resized residuals of each 
+#' bootstrap iteration. For each of these iterations, the average resized residual
+#' is taken. Each of these means stands for a hypothetical simple average treatment
+#' effect and can therefore be used to compute critical values later. 
+#' @keywords internal
+cal_simple_averages_residuals <- function(x) {
+  mean_val <- mean(x$boot_res, na.rm=T)                                       # bootstraped ATT (already scaled)
+  B <- unique(x$B)
+  return(list(data.frame(mean_tt=mean_val, B=B)))
+}
+
+
+#' @title calculate mean pseudo treatment effects
+#' @description
+#' Much like the previous functions, this function computes the average of the 
+#' pseudo treatment effects. It is designed to be applied to the dataframe of 
+#' treatment effects for each treated unit separately (using sapply). The 
+#' resulting averages can then be used to test the credibility of PTA. 
+#' @keywords internal
+cal_average_pseudo_atts <- function(x, unitname, gname) {
+  mean_att <- mean(x$att, na.rm=T)
+  id <- unique(x[,unitname])
+  g <- unique(x[,gname])
+  return(list(data.frame(id=id, g=g, pseudo_att=mean_att)))
+}
+
+
+#' @title calculate pretreatment tests
+#' @description
+#' This function calculates the critical values of the pseudo treatment effects
+#' and derives a p-value, indicating whether the pseudo pretreatment effects are
+#' different from the pseudo treatment effects of the controls. It is designed
+#' to be applied to the bootstrapped residuals grouped by the treated unit they
+#' were bootstrapped for. 
+#' @keywords internal
+cal_pretreatment_pvalues <- function(x) {
+  
+  id <- unique(x$id)
+  g <- unique(x$g)
+  pseudo_att <- unique(x$pseudo_att)
+  treat_var <- ifelse(max(!is.na(x$treat_var))>0, unique(x$treat_var[!is.na(x$treat_var)]), NA)
+  boot_mean <- tapply(x$norm_residuals, x$B, FUN = mean, na.rm=T)      # mean of each bootstrap draw
+  p_value <- sum(abs(boot_mean*treat_var)>abs(pseudo_att),na.rm=T)/sum(!is.na(boot_mean))
+  p_value_right <- sum(boot_mean*treat_var>pseudo_att,na.rm=T)/sum(!is.na(boot_mean))
+  p_value_left <- sum(boot_mean*treat_var<pseudo_att,na.rm=T)/sum(!is.na(boot_mean))
+  
+  return(list(data.frame(id=id,
+                         g=g,
+                         p_value=p_value,
+                         p_value_left = p_value_left,
+                         p_value_right = p_value_right)))
+}
 

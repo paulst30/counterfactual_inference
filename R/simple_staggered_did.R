@@ -259,16 +259,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   # calculate actual average atts
   treatment_effects$id <- treatment_effects[,unitname]
 
-  mean_function <- function(x) {
-    index <- x[,tname]>=x[,gname]
-    n <- nrow(x[index & !is.na(x$att),])
-    mean_att <- mean(x$att[index], na.rm=T)
-    analy_crit_val<- sd(x$att[index], na.rm = T)/sqrt(n)*1.96
-    id <- unique(x[,unitname])
-    g <- unique(x[,gname])
-    return(list(data.frame(id=id, g=g, att=mean_att, analy_crit_val=analy_crit_val)))
-  }
-  groupwise_atts <- sapply(split(treatment_effects, as.formula(~id)), mean_function)
+  groupwise_atts <- sapply(split(treatment_effects, as.formula(~id)), cal_group_atts, tname = tname, gname = gname, unitname = unitname)
   groupwise_atts <- do.call(rbind, groupwise_atts)
   bootstraped_groupwise_average$att <- groupwise_atts$att[match(bootstraped_groupwise_average$id, groupwise_atts$id)]
   bootstraped_groupwise_average$analy_crit_val <- groupwise_atts$analy_crit_val[match(bootstraped_groupwise_average$id, groupwise_atts$id)]
@@ -282,16 +273,13 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   # Each of these means represents a hypothetical average ATT. 
   # These 200 hypothetical ATTs are used to calculate the 95% confidence interval.
   
-  mean_function <- function(x) {
-    mean_val <- mean(x$boot_res, na.rm=T)                                       # bootstraped ATT (already scaled)
-    B <- unique(x$B)
-    return(list(data.frame(mean_tt=mean_val, B=B)))
-  }
-  bootstraped_simple_average <- sapply(split(bootstraped_residuals[treated,], as.formula(~B)), mean_function)
+  bootstraped_simple_average <- sapply(split(bootstraped_residuals[treated,], as.formula(~B)), cal_simple_averages_residuals)
   bootstraped_simple_average <- do.call(rbind, bootstraped_simple_average)
 
   # get the critical value 
   overall_crit_val <- quantile(abs(bootstraped_simple_average$mean_tt), prob=0.95, na.rm=T)
+  crit_val_left <- quantile(bootstraped_simple_average$mean_tt, prob=0.05, na.rm=T)
+  crit_val_right <- quantile(bootstraped_simple_average$mean_tt, prob=0.95, na.rm=T)
 
   # get sample size
   index <- treatment_effects[,tname]>=treatment_effects[,gname]
@@ -300,39 +288,28 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   # calculate average treatment effect
   bootstraped_simple_average <- data.frame(att = mean(treatment_effects$att[index], na.rm=T),
                                            analy_crit_val = sd(treatment_effects$att[index], na.rm=T)/sqrt(n)*1.96,
-                                           crit_val = overall_crit_val)
+                                           crit_val = overall_crit_val,
+                                           crit_val_left = crit_val_left,
+                                           crit_val_right = crit_val_right)
 
  
   # Pre-Treatment Trend test ---------------------------------------------------
  
   # calculate mean pseudo treatment effect
-  mean_function <- function(x) {
-    mean_att <- mean(x$att, na.rm=T)
-    id <- unique(x[,unitname])
-    g <- unique(x[,gname])
-    return(list(data.frame(id=id, g=g, pseudo_att=mean_att)))
-  }
-  pseudo_pre_treatment_atts <- sapply(split(treatment_effects[treatment_effects[, tname]<treatment_effects[,gname],], as.formula(~id)), mean_function)
+
+  pseudo_pre_treatment_atts <- sapply(split(treatment_effects[treatment_effects[, tname]<treatment_effects[,gname],], as.formula(~id)), cal_average_pseudo_atts, unitname = unitname, gname = gname)
   pseudo_pre_treatment_atts <- do.call(rbind, pseudo_pre_treatment_atts)
   
   # attach mean pseudo treatment effect to bootstraped residuals
   bootstraped_residuals$pseudo_att <- pseudo_pre_treatment_atts$pseudo_att[match(bootstraped_residuals$id,pseudo_pre_treatment_atts$id)]
 
-  quantile_function <- function(x) {
-
-    id <- unique(x$id)
-    g <- unique(x$g)
-    pseudo_att <- unique(x$pseudo_att)
-    treat_var <- ifelse(max(!is.na(x$treat_var))>0, unique(x$treat_var[!is.na(x$treat_var)]), NA)
-    boot_mean <- tapply(x$norm_residuals, x$B, FUN = mean, na.rm=T)      # mean of each bootstrap draw
-    p_value <- sum(abs(boot_mean*treat_var)>abs(pseudo_att),na.rm=T)/sum(!is.na(boot_mean))        # p-value
-    return(list(data.frame(id=id, g=g, p_value=p_value)))
-  }
-  pre_treatment_p_value <- sapply(split(bootstraped_residuals[!treated,], as.formula(~id)), quantile_function)
+  pre_treatment_p_value <- sapply(split(bootstraped_residuals[!treated,], as.formula(~id)), cal_pretreatment_pvalues)
   pre_treatment_p_value <-do.call(rbind, pre_treatment_p_value)
   
   # attach p-values to group-wise treatment effects
   bootstraped_groupwise_average$pre_treatment_p_value <- pre_treatment_p_value$p_value[match(bootstraped_groupwise_average$id, pre_treatment_p_value$id)]
+  bootstraped_groupwise_average$pre_treatment_p_value_left <- pre_treatment_p_value$p_value_left[match(bootstraped_groupwise_average$id, pre_treatment_p_value$id)]
+  bootstraped_groupwise_average$pre_treatment_p_value_right <- pre_treatment_p_value$p_value_right[match(bootstraped_groupwise_average$id, pre_treatment_p_value$id)]
   
   #-----------------------------------------------------------------------------
   # Output
