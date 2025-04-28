@@ -68,14 +68,20 @@ check_duplicates <- function(data, idname, tname) {
 
 #' @title get x formula
 #' @keywords internal
-get_x_formula <- function(xformula) {
+get_x_formula <- function(xformula, dta) {
   
-  # check if input is in the right format
-  if (class(xformula)!="character"){
-    stop("xformula needs to be a string vector.")
-  }
-  
-  if (max(!is.na(xformula))) {
+   if (max(!is.na(xformula))) {
+     
+    # check if input is in the right format
+    if (class(xformula)!="character"){
+      stop("xformula needs to be a string vector.")
+    }
+     
+    # check if inputs are in the data
+     if (!all(xformula %in% names(dta))) {
+       stop("Not all control variables specified in xformula are in the dataset.")
+     }
+    
     form <- as.formula(paste("delta ~ 1 + treated_unit +", paste(xformula, collapse =  "+"))) 
   } else {
     form <- as.formula(paste("delta ~ 1 + treated_unit"))
@@ -86,15 +92,20 @@ get_x_formula <- function(xformula) {
 
 #' @title get var formula
 #' @keywords internal
-get_var_formula <- function(varformula) {
-  
-  # check if input is in the right format
-  if (class(varformula)!="character"){
-    stop("varformula needs to be a string vector.")
-  }
-  
+get_var_formula <- function(varformula, dta) {
 
   if (max(!is.na(varformula))) {
+    
+    # check if input is in the right format
+    if (class(varformula)!="character"){
+      stop("varformula needs to be a string vector.")
+    }
+    
+    # check if inputs are in the data
+    if (!all(varformula %in% names(dta))) {
+      stop("Not all control variables specified in varformula are in the dataset.")
+    }
+    
     var_form <- as.formula(paste("residuals^2 ~ 1 + ", paste(paste0("I(",varformula, "^-1)"), collapse =  "+"))) 
   } else {
     var_form <- as.formula(paste("residuals^2 ~ 1"))
