@@ -103,6 +103,7 @@ output <- simple_staggered_did(yname = "y",
                                xformula = "x",
                                varformula = "z",
                                data = dta)
+
 }
 \references{
 Callaway, Brantly and Pedro H.C. Sant'Anna. 2021. "Difference-in-Differences with Multiple Time Periods." Journal of Econometrics, Vol. 225, No. 2, pp. 200-230. <https://arxiv.org/abs/1803.09015>

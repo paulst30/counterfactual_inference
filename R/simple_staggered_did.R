@@ -68,14 +68,19 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   #make sure data is a sorted data frame
   data <- as.data.frame(data)
   
-  #expand data 
-  expanded_dta <- expand.grid(unit = unique(data[,idname]),period = unique(data[,tname]))
-  data <- merge(data,expanded_dta,by.x=c(idname,tname),by.y=c("unit","period"),all.y=T)
-  data[,gname] <- ave(data[,gname], data[,idname], FUN = function(x) max(x, na.rm=T))
-  data[,unitname] <- ave(data[,unitname], data[,idname], FUN = function(x) max(x, na.rm=T))
+  #check input data
+  check_inputs(data, yname, gname,tname, idname, unitname)
+  check_missings(data, gname, tname, idname, unitname)
   
-  #sort dataset
-  data <- data[order(data[,idname], data[,tname], decreasing=FALSE),]
+  # check if any variables used in the variance estimation are zero or below one (which might cause NaNs)
+  for (z in varformula) {
+    if (any(data[,z]>-1 & data[,z]<1)) {
+      warning(paste("Variable", z, "has values close zero. This might lead to NAs in confidence intervals.")) 
+    }
+  }
+  
+  #expand and sort data 
+  data <- expand_sort_data(data, yname, gname, tname, idname, unitname)
   
   #unpack inputs
   G <- (data[,gname]!=0)
@@ -85,45 +90,25 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   ulist <- as.vector(unique(data[,idname]))
   
   #check if observations are uniquely identified
-  duplicates <- duplicated(paste0(data[,idname],"_",data[,tname]))
-  if (sum(duplicates)>0) {
-    stop(paste("Variables", idname, "and", tname, "do not uniquely identify all observations. Consider specifying unitname (see documentation for further information)."))
-  }
+  check_duplicates(data, idname, tname)
 
+  
   #set formulas for outcome and variance model
-  if (max(!is.na(xformula))) {
-    form <- as.formula(paste("delta ~ 1 + treated_unit +", paste(xformula, collapse =  "+"))) 
-  } else {
-    form <- as.formula(paste("delta ~ 1 + treated_unit"))
-  }
+  form <- get_x_formula(xformula)
+  var_form <- get_var_formula(varformula)
   
-  if (max(!is.na(varformula))) {
-    var_form <- as.formula(paste("residuals^2 ~ 1 + ", paste(paste0("I(",varformula, "^-1)"), collapse =  "+"))) 
-  } else {
-    var_form <- as.formula(paste("residuals^2 ~ 1"))
-  }
-  
-  # reduce dataset to necessary variables 
+
+    # reduce dataset to necessary variables 
    necessary_var <- if(max(!is.na(varformula))) c(unitname, gname, tname, varformula) else c(unitname, gname, tname)
   
    
   # Set up output objects
   output <- list()                                           # empty output objects
   
-  bootstraped_residuals <- data.frame(g=numeric(),           # data frame to track bootstraped residuals
-                                      id=numeric(),
-                                      B=numeric(),
-                                      t=numeric(),
-                                      boot_res=numeric(),
-                                      tt=numeric())
+  bootstraped_residuals <- list()          # list to track bootstraped residuals
+  treatment_effects <- list()              # to track treatment effects for treated units
   
-  
-  treatment_effects <- data.frame(data[G,necessary_var],     # data frame to track treatment effects for treated units
-                                  att = NA,
-                                  analy_crit_val =NA)
-  
-  treatment_effects <- treatment_effects[!duplicated(paste0(treatment_effects[,unitname],"_",treatment_effects[,tname])),]
-  
+
   #-----------------------------------------------------------------------------
   # Estimate Outcome Model, Treatment Effects, and track Residuals
   #-----------------------------------------------------------------------------
@@ -135,115 +120,46 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
     
     # define treated unit, control unit, and treatment timing
     pret <- as.numeric(group)-1                               # last period before treatment
-    G <- data[,unitname] == g                                   # treated unit
+    G <- (data[,unitname] == g)                                   # treated unit
     data$treated_unit <- G
-    C <- data[,gname] == 0                                    # all never-treated units
-    
-    # include not-yet-treated units in the control group if specified
-    if (control_group=="not_yet_treated") {
-      control <- data[,gname] == 0                            # never-treated units again
-      not_yet_treated <- !(data[,gname] %in% c(0, group)) &   # exclude units that are never treated and are treated simultaneously
-                          (data[, tname] < data[,gname]) &    # include only time periods before units are treated themselves
-                          (data[,gname] > group)              # include only units that are treated after the current treated unit
-      C <- (control | not_yet_treated)
-    }
+    C <- define_control_group(data, gname, tname, group, control_group)
     
     
     # estimate the difference to last pre-treatment period 
-    data$delta <- NA
-    for (id in ulist){
-      group_indices <- data[, idname] == id 
-      pretreatment_period <- data[,tname]== pret                                      # base periods for all units
-      reference_value <- as.numeric(data[group_indices & pretreatment_period, yname]) # value in the base period for every unit
-      if (length(reference_value)==0) {                                               # skip to the next iteration if the base period is missing
-        print(paste0("Base period (",pret ,") is missing for unit ",id ))
-        next
-      }
-      data[group_indices, "delta"] <- data[group_indices, yname] - reference_value    # calculate changes in the outcome variable (delta)
-    }
-   
-    # change pretreatment delta to first differences if base period is not "universal"
-    if (!universal_base) {
-      difference <- function(x){                                                # function returns a vector of first differences where possible and NA otherwise
-        first_diff <- ifelse(is.na(x[,yname]) | is.na(c(tail(x[,yname], -1), NA)) , NA ,diff(x[,yname], lead=1))
-        return(list(first_diff))
-      }
-      first_diff <-  sapply(split(data, data[,idname]), FUN = difference)
-      first_diff <- unlist(first_diff)
-      
-      data$first_diff <- first_diff
-      
-      # replace delta for pretreatment periods
-      data$delta <- ifelse(data[, tname]<=pret, data$first_diff, data$delta)
-    }
+    # and if specified the first differences for pretreatment values
+    data$delta <- difference_builder(data, idname, tname, yname, pret, universal_base)
     
+
     #are there any missings in the dataset?
     necessary_var <- if(max(!is.na(xformula))) c(unitname, gname, tname,"delta", xformula) else c(unitname, gname, tname, "delta")
     n_missing <- complete.cases(data[,necessary_var])                  # indicates all observations for which a delta and all variables of the outcome model are non-missing
     
-    # outcome residuals for specific group
+    # outcome residuals and treatment for specific group/unit
     outcome_residuals <- list()
+    treatment_effects_list <- list()
     
     
     #loop over time periods to estimate a outcome model for each period
     for (t in tlist) {
+      outcome_list <- estimate_outcome_model(data, tname, idname, unitname, t, C, G, g, pret, xformula, form)
       
-      # set current period
-      posttreatment_period <- data[,tname]==t
-      
-      # Put together necessary data
-      y <- as.data.frame(data[posttreatment_period & (C | G), c("delta", unitname, tname, idname)])
-      row.names(y) <- NULL
-      
-      if (max(!is.na(xformula))) {
-       X <- as.data.frame(data[(C | G) & data[,tname] == pret, c(unitname, "treated_unit", xformula, idname)] )
-       row.names(X) <- NULL
-      } else {
-       X <- as.data.frame(data[(C | G) & data[,tname] == pret, c(unitname, "treated_unit", idname)])
-       row.names(X) <- NULL
+      if (!is.null(outcome_list[[1]])) {
+        outcome_residuals[[t]] <- outcome_list[[1]]
+        treatment_effects_list[[t]] <- outcome_list[[2]]
       }
-     
-      X <- merge(y,X, by.x=c(idname), by.y=c(idname), all.x= TRUE)
-      
-      #check if there are enough observations, skip iteration if not
-      if (!max(complete.cases(X[X[,"treated_unit"]==1,]))) {
-        warning(paste("Incomplete observation for treated unit ", g," in period ", t,
-                      ". Either the outcome variable is missing in period ", t," or ", pret, 
-                      ", or one of the control variables is missing in ", pret))
+      else {
         next
-      } 
-      
-      if (!max(complete.cases(X[X[,"treated_unit"]!=1,]))) {
-        warning(paste("No control units for treated unit", g,"in period", t))
-        next
-      } 
-      
-  
-      # Estimate outcome model
-        outcome_model <- lm(form, 
-                          data = X)
-
- 
-      # save residuals and sample size of outcome model for later use
-      index <- as.numeric(names(residuals(outcome_model)))
-      residuals <- data.frame(data[posttreatment_period & (C | G),][index,], 
-                               residuals = residuals(outcome_model))
-      obs <- nrow(residuals)
-      #outcome_residuals$inv_obs[outcome_residuals[,tname]==t] <- 1/obs
-      outcome_residuals[[t]] <- residuals[residuals[,unitname]!=g,]
-      
-      
-      # save treatment effect and analytical standard errors
-      treatment_effects[treatment_effects[,unitname]==g & treatment_effects[,tname]==t, "att"] <- outcome_model$coefficients[2]
-      treatment_effects[treatment_effects[,unitname]==g & treatment_effects[,tname]==t, "analy_crit_val"] <- sqrt(diag(vcov(outcome_model))/obs)[2]*1.96
-      
-      # save number of treated observations
-      #treatment_effects$inv_obs[treatment_effects[,unitname]==g & treatment_effects[,tname]==t] <- 1/nrow(data[posttreatment_period & G,])
+      }
       
     }
 
     outcome_residuals <- do.call(rbind, outcome_residuals)
-
+    treatment_effects_list <- do.call(rbind, treatment_effects_list)
+    
+    # match treatment effects with variables required for variance model
+    treatment_effects_list <- merge(treatment_effects_list, data[,c(varformula, gname, unitname, tname)], by=c(unitname, tname), all.x=TRUE)
+    
+    
     #---------------------------------------------------------------------------
     # Estimate variance and control for heteroscedasticity
     #---------------------------------------------------------------------------
@@ -261,10 +177,10 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
                       na.action = "na.exclude")
 
     # normalize the residuals by dividing them by their (expected) standard error
-      outcome_residuals$norm_residuals <-outcome_residuals$residuals / sqrt(predict(object=var_model, data=outcome_residuals))
+      suppressWarnings(outcome_residuals$norm_residuals <-outcome_residuals$residuals / sqrt(predict(object=var_model, data=outcome_residuals)))
 
     # estimate the standard errors of the treated
-      treatment_effects$var <- sqrt(predict(object = var_model, newdata = treatment_effects))
+      treatment_effects_list$var <- sqrt(predict(object = var_model, newdata = treatment_effects_list))
 
     #---------------------------------------------------------------------------
     # Bootstrap normalized residuals
@@ -278,7 +194,7 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
       bootstrap_controls <- replicate(bstrap,sample(unique_controls,size =  1 ,replace = TRUE), simplify = FALSE)
       
       # relevant treatment effects to be matched to the bootstrapped residuals
-      var_treated <- treatment_effects[treatment_effects[,unitname]==g, c(tname, "var", "att")]
+      var_treated <- treatment_effects_list[treatment_effects_list[,unitname]==g, c(tname, "var", "att")]
       
       # create empty list to save results
       bootstraped_res <- list()
@@ -298,43 +214,24 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
       
       # consolidate list into one data frame with resized residuals
       bootstraped_res <- do.call(rbind, bootstraped_res)
-      bootstraped_residuals <- rbind(bootstraped_residuals, bootstraped_res)
-      
+
+      # save to results to lists
+      treatment_effects[[g]] <- treatment_effects_list
+      bootstraped_residuals[[g]] <- bootstraped_res
 
   }
   }
-  
+
+  treatment_effects <- do.call(rbind, treatment_effects)
+  bootstraped_residuals <- do.call(rbind, bootstraped_residuals)
+
   #-----------------------------------------------------------------------------
   # Estimate confidence intervals
   #-----------------------------------------------------------------------------
  
   # Calculate group-time average effects----------------------------------------
-  quantile_function <- function(x) {                                           # If there are bootstraped residuals for a unit+time observation...
- 
-    if (sum(!is.na(x$boot_res))>0 & nrow(x)>0) {
-      maxima <- tapply(abs(x$boot_res), x[,tname], FUN = function(v) {
-        if (all(is.na(v))) NA else max(v, na.rm = TRUE)
-      })                                                                       # Get maxima for each period t
-      uniform_crit_val <- quantile(maxima, prob=0.95, na.rm=T)                 # calculate the 95% confidence value of maxima.
-      crit_val <- tapply(abs(x$boot_res), x[,tname], FUN=function(x) quantile(x,prob=0.95, na.rm=T))
-
-    } else if (sum(!is.na(x$boot_res))==0 & nrow(x)>0) {                       # If there is only missing data for a specific unit x time combination
-      crit_val <- rep(NA, length(unique(x[,tname])))                           # set the critical value to NA also
-      uniform_crit_val <- rep(NA, length(unique(x[,tname])))
-    } else if (nrow(x)==0) {                                                   # If there is no data at all, return an empty vector
-      crit_val <- numeric()
-      uniform_crit_val <- numeric()
-    }
-    
-    id <- unique(x$id)
-    t <- unique(x[,tname])
-    g <- unique(x$g)
-    
-    
-    return(list(data.frame(id=id, g=g, t=t, crit_val=crit_val, uniform_crit_val=uniform_crit_val)))
-    
-  }
-  bootstraped_grouptime_average <- sapply(split(bootstraped_residuals, as.formula(~id)), quantile_function)
+  
+  bootstraped_grouptime_average <- sapply(split(bootstraped_residuals, as.formula(~id)), cal_group_time_effects, tname=tname)
   bootstraped_grouptime_average <- do.call(rbind, bootstraped_grouptime_average)
   bootstraped_grouptime_average$att <- treatment_effects$att[match(paste0(bootstraped_grouptime_average$id,bootstraped_grouptime_average$t),
                                                                    paste0(treatment_effects[,unitname], treatment_effects[,tname]))]
@@ -352,17 +249,8 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   # This leads to a bootstrap sample (B=200) for each unit. 
   # Take the maxima of the 200 bootstraped means per unit.
   # The 95% quantile of all maxima represents the uniform ciritical value.
-  
-  quantile_function <- function(x) {
-    id <- unique(x$id)
-    g <- unique(x$g)
-    treat_var <- ifelse(max(!is.na(x$treat_var))>0, unique(x$treat_var[!is.na(x$treat_var)]), NA)
-    boot_mean <- tapply(x$norm_residuals, x$B, FUN = mean, na.rm=T)      # mean of each bootstrap draw
-    crit_val <- quantile(boot_mean, prob=0.95, na.rm=T)*treat_var        # regular pointwise CI
-    norm_maxima <- max(boot_mean)                                        # maximum of bootstraped means for uniform CI
-    return(list(data.frame(norm_maxima=norm_maxima, treat_var=treat_var, id=id, g=g, crit_val=crit_val)))
-  }
-  bootstraped_groupwise_average <- sapply(split(bootstraped_residuals[treated,], as.formula(~id)), quantile_function)
+
+  bootstraped_groupwise_average <- sapply(split(bootstraped_residuals[treated,], as.formula(~id)), cal_group_crit_vals)
   bootstraped_groupwise_average <- do.call(rbind, bootstraped_groupwise_average)
   
   # Use the maxima of bootstraped means to calculate 95% confidence intervals of the unit ATTs
@@ -370,17 +258,8 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   
   # calculate actual average atts
   treatment_effects$id <- treatment_effects[,unitname]
-  
-  mean_function <- function(x) {
-    index <- x[,tname]>=x[,gname]
-    n <- nrow(x[index & !is.na(x$att),])
-    mean_att <- mean(x$att[index], na.rm=T)
-    analy_crit_val<- sd(x$att[index], na.rm = T)/sqrt(n)*1.96
-    id <- unique(x[,unitname])
-    g <- unique(x[,gname])
-    return(list(data.frame(id=id, g=g, att=mean_att, analy_crit_val=analy_crit_val)))
-  }
-  groupwise_atts <- sapply(split(treatment_effects, as.formula(~id)), mean_function)
+
+  groupwise_atts <- sapply(split(treatment_effects, as.formula(~id)), cal_group_atts, tname = tname, gname = gname, unitname = unitname)
   groupwise_atts <- do.call(rbind, groupwise_atts)
   bootstraped_groupwise_average$att <- groupwise_atts$att[match(bootstraped_groupwise_average$id, groupwise_atts$id)]
   bootstraped_groupwise_average$analy_crit_val <- groupwise_atts$analy_crit_val[match(bootstraped_groupwise_average$id, groupwise_atts$id)]
@@ -394,16 +273,13 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   # Each of these means represents a hypothetical average ATT. 
   # These 200 hypothetical ATTs are used to calculate the 95% confidence interval.
   
-  mean_function <- function(x) {
-    mean_val <- mean(x$boot_res, na.rm=T)                                       # bootstraped ATT (already scaled)
-    B <- unique(x$B)
-    return(list(data.frame(mean_tt=mean_val, B=B)))
-  }
-  bootstraped_simple_average <- sapply(split(bootstraped_residuals[treated,], as.formula(~B)), mean_function)
+  bootstraped_simple_average <- sapply(split(bootstraped_residuals[treated,], as.formula(~B)), cal_simple_averages_residuals)
   bootstraped_simple_average <- do.call(rbind, bootstraped_simple_average)
 
   # get the critical value 
   overall_crit_val <- quantile(abs(bootstraped_simple_average$mean_tt), prob=0.95, na.rm=T)
+  crit_val_left <- quantile(bootstraped_simple_average$mean_tt, prob=0.05, na.rm=T)
+  crit_val_right <- quantile(bootstraped_simple_average$mean_tt, prob=0.95, na.rm=T)
 
   # get sample size
   index <- treatment_effects[,tname]>=treatment_effects[,gname]
@@ -412,39 +288,28 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
   # calculate average treatment effect
   bootstraped_simple_average <- data.frame(att = mean(treatment_effects$att[index], na.rm=T),
                                            analy_crit_val = sd(treatment_effects$att[index], na.rm=T)/sqrt(n)*1.96,
-                                           crit_val = overall_crit_val)
+                                           crit_val = overall_crit_val,
+                                           crit_val_left = crit_val_left,
+                                           crit_val_right = crit_val_right)
 
  
   # Pre-Treatment Trend test ---------------------------------------------------
  
   # calculate mean pseudo treatment effect
-  mean_function <- function(x) {
-    mean_att <- mean(x$att, na.rm=T)
-    id <- unique(x[,unitname])
-    g <- unique(x[,gname])
-    return(list(data.frame(id=id, g=g, pseudo_att=mean_att)))
-  }
-  pseudo_pre_treatment_atts <- sapply(split(treatment_effects[treatment_effects[, tname]<treatment_effects[,gname],], as.formula(~id)), mean_function)
+
+  pseudo_pre_treatment_atts <- sapply(split(treatment_effects[treatment_effects[, tname]<treatment_effects[,gname],], as.formula(~id)), cal_average_pseudo_atts, unitname = unitname, gname = gname)
   pseudo_pre_treatment_atts <- do.call(rbind, pseudo_pre_treatment_atts)
   
   # attach mean pseudo treatment effect to bootstraped residuals
   bootstraped_residuals$pseudo_att <- pseudo_pre_treatment_atts$pseudo_att[match(bootstraped_residuals$id,pseudo_pre_treatment_atts$id)]
 
-  quantile_function <- function(x) {
-
-    id <- unique(x$id)
-    g <- unique(x$g)
-    pseudo_att <- unique(x$pseudo_att)
-    treat_var <- ifelse(max(!is.na(x$treat_var))>0, unique(x$treat_var[!is.na(x$treat_var)]), NA)
-    boot_mean <- tapply(x$norm_residuals, x$B, FUN = mean, na.rm=T)      # mean of each bootstrap draw
-    p_value <- sum(abs(boot_mean*treat_var)>abs(pseudo_att),na.rm=T)/sum(!is.na(boot_mean))        # p-value
-    return(list(data.frame(id=id, g=g, p_value=p_value)))
-  }
-  pre_treatment_p_value <- sapply(split(bootstraped_residuals[!treated,], as.formula(~id)), quantile_function)
+  pre_treatment_p_value <- sapply(split(bootstraped_residuals[!treated,], as.formula(~id)), cal_pretreatment_pvalues)
   pre_treatment_p_value <-do.call(rbind, pre_treatment_p_value)
   
   # attach p-values to group-wise treatment effects
   bootstraped_groupwise_average$pre_treatment_p_value <- pre_treatment_p_value$p_value[match(bootstraped_groupwise_average$id, pre_treatment_p_value$id)]
+  bootstraped_groupwise_average$pre_treatment_p_value_left <- pre_treatment_p_value$p_value_left[match(bootstraped_groupwise_average$id, pre_treatment_p_value$id)]
+  bootstraped_groupwise_average$pre_treatment_p_value_right <- pre_treatment_p_value$p_value_right[match(bootstraped_groupwise_average$id, pre_treatment_p_value$id)]
   
   #-----------------------------------------------------------------------------
   # Output
