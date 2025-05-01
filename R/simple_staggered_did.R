@@ -159,6 +159,11 @@ simple_staggered_did <- function(yname, tname, gname, idname, unitname = idname,
     outcome_residuals <- do.call(rbind, outcome_residuals)
     treatment_effects_list <- do.call(rbind, treatment_effects_list)
     
+    # check if there are any results for the current treated unit
+    if (is.null(treatment_effects_list)){
+      next
+    }
+    
     # match treatment effects with variables required for variance model
     necessary_vars_treat <- if(max(!is.na(varformula))) c(varformula, gname, unitname, tname) else c(gname, unitname, tname)
     treatment_effects_list <- merge(treatment_effects_list, data[,necessary_vars_treat], by=c(unitname, tname), all.x=TRUE)
