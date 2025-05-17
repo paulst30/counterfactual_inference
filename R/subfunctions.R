@@ -172,7 +172,7 @@ diff_1lag <- function(data, tname, yname, pret) {
   rownames(diff) <- rownames(data)
   
   # ensure original ordering
-  if (exists("index")){
+  if (exists("index", inherits = FALSE)){
     diff <- as.data.frame(diff[index,])
     row.names(diff) <- index
   }
